@@ -1,0 +1,9 @@
+[package]
+name = "procfs-core"
+documentation = "https://docs.rs/procfs-core/"
+description = "Data structures and parsing for the linux procfs pseudo-filesystem"
+readme = "../README.md"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
