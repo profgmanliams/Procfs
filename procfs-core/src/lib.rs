@@ -614,3 +614,311 @@ impl From<&'static str> for ProcError {
 }
 
 impl From<std::num::ParseIntError> for ProcError {
+    fn from(val: std::num::ParseIntError) -> Self {
+        ProcError::Other(format!("ParseIntError: {}", val))
+    }
+}
+
+impl From<std::string::ParseError> for ProcError {
+    fn from(e: std::string::ParseError) -> Self {
+        match e {}
+    }
+}
+
+impl std::fmt::Display for ProcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            // Variants with paths:
+            ProcError::PermissionDenied(Some(p)) => write!(f, "Permission Denied: {}", p.display()),
+            ProcError::NotFound(Some(p)) => write!(f, "File not found: {}", p.display()),
+            ProcError::Incomplete(Some(p)) => write!(f, "Data incomplete: {}", p.display()),
+            ProcError::Io(inner, Some(p)) => {
+                write!(f, "Unexpected IO error({}): {}", p.display(), inner)
+            }
+            // Variants without paths:
+            ProcError::PermissionDenied(None) => write!(f, "Permission Denied"),
+            ProcError::NotFound(None) => write!(f, "File not found"),
+            ProcError::Incomplete(None) => write!(f, "Data incomplete"),
+            ProcError::Io(inner, None) => write!(f, "Unexpected IO error: {}", inner),
+
+            ProcError::Other(s) => write!(f, "Unknown error {}", s),
+            ProcError::InternalError(e) => write!(f, "Internal error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for ProcError {}
+
+/// Load average figures.
+///
+/// Load averages are calculated as the number of jobs in the run queue (state R) or waiting for
+/// disk I/O (state D) averaged over 1, 5, and 15 minutes.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct LoadAverage {
+    /// The one-minute load average
+    pub one: f32,
+    /// The five-minute load average
+    pub five: f32,
+    /// The fifteen-minute load average
+    pub fifteen: f32,
+    /// The number of currently runnable kernel scheduling  entities  (processes,  threads).
+    pub cur: u32,
+    /// The number of kernel scheduling entities that currently exist on the system.
+    pub max: u32,
+    /// The fifth field is the PID of the process that was most recently created on the system.
+    pub latest_pid: u32,
+}
+
+impl FromRead for LoadAverage {
+    fn from_read<R: Read>(mut reader: R) -> ProcResult<Self> {
+        let mut line = String::new();
+
+        reader.read_to_string(&mut line)?;
+        let mut s = line.split_whitespace();
+
+        let one = expect!(f32::from_str(expect!(s.next())));
+        let five = expect!(f32::from_str(expect!(s.next())));
+        let fifteen = expect!(f32::from_str(expect!(s.next())));
+        let curmax = expect!(s.next());
+        let latest_pid = expect!(u32::from_str(expect!(s.next())));
+
+        let mut s = curmax.split('/');
+        let cur = expect!(u32::from_str(expect!(s.next())));
+        let max = expect!(u32::from_str(expect!(s.next())));
+
+        Ok(LoadAverage {
+            one,
+            five,
+            fifteen,
+            cur,
+            max,
+            latest_pid,
+        })
+    }
+}
+
+/// Possible values for a kernel config option
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub enum ConfigSetting {
+    Yes,
+    Module,
+    Value(String),
+}
+
+/// The kernel configuration.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct KernelConfig(pub HashMap<String, ConfigSetting>);
+
+impl FromBufRead for KernelConfig {
+    fn from_buf_read<R: BufRead>(r: R) -> ProcResult<Self> {
+        let mut map = HashMap::new();
+
+        for line in r.lines() {
+            let line = line?;
+            if line.starts_with('#') {
+                continue;
+            }
+            if line.contains('=') {
+                let mut s = line.splitn(2, '=');
+                let name = expect!(s.next()).to_owned();
+                let value = match expect!(s.next()) {
+                    "y" => ConfigSetting::Yes,
+                    "m" => ConfigSetting::Module,
+                    s => ConfigSetting::Value(s.to_owned()),
+                };
+                map.insert(name, value);
+            }
+        }
+
+        Ok(KernelConfig(map))
+    }
+}
+
+/// The amount of time, measured in ticks, the CPU has been in specific states
+///
+/// These fields are measured in ticks because the underlying data from the kernel is measured in ticks.
+/// The number of ticks per second is generally 100 on most systems.
+///
+/// To convert this value to seconds, you can divide by the tps.  There are also convenience methods
+/// that you can use too.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct CpuTime {
+    /// Ticks spent in user mode
+    pub user: u64,
+    /// Ticks spent in user mode with low priority (nice)
+    pub nice: u64,
+    /// Ticks spent in system mode
+    pub system: u64,
+    /// Ticks spent in the idle state
+    pub idle: u64,
+    /// Ticks waiting for I/O to complete
+    ///
+    /// This value is not reliable, for the following reasons:
+    ///
+    /// 1. The CPU will not wait for I/O to complete; iowait is the time that a
+    ///    task is waiting for I/O to complete.  When a CPU goes into idle state
+    ///    for outstanding task I/O, another task will be scheduled on this CPU.
+    ///
+    /// 2. On a multi-core CPU, this task waiting for I/O to complete is not running
+    ///    on any CPU, so the iowait for each CPU is difficult to calculate.
+    ///
+    /// 3. The value in this field may *decrease* in certain conditions.
+    ///
+    /// (Since Linux 2.5.41)
+    pub iowait: Option<u64>,
+    /// Ticks servicing interrupts
+    ///
+    /// (Since Linux 2.6.0)
+    pub irq: Option<u64>,
+    /// Ticks servicing softirqs
+    ///
+    /// (Since Linux 2.6.0)
+    pub softirq: Option<u64>,
+    /// Ticks of stolen time.
+    ///
+    /// Stolen time is the time spent in other operating systems when running in
+    /// a virtualized environment.
+    ///
+    /// (Since Linux 2.6.11)
+    pub steal: Option<u64>,
+    /// Ticks spent running a virtual CPU for guest operating systems under control
+    /// of the linux kernel
+    ///
+    /// (Since Linux 2.6.24)
+    pub guest: Option<u64>,
+    /// Ticks spent running a niced guest
+    ///
+    /// (Since Linux 2.6.33)
+    pub guest_nice: Option<u64>,
+
+    tps: u64,
+}
+
+impl CpuTime {
+    fn from_str(s: &str, ticks_per_second: u64) -> ProcResult<CpuTime> {
+        let mut s = s.split_whitespace();
+
+        // Store this field in the struct so we don't have to attempt to unwrap ticks_per_second() when we convert
+        // from ticks into other time units
+        let tps = ticks_per_second;
+
+        s.next();
+        let user = from_str!(u64, expect!(s.next()));
+        let nice = from_str!(u64, expect!(s.next()));
+        let system = from_str!(u64, expect!(s.next()));
+        let idle = from_str!(u64, expect!(s.next()));
+
+        let iowait = s.next().map(|s| Ok(from_str!(u64, s))).transpose()?;
+        let irq = s.next().map(|s| Ok(from_str!(u64, s))).transpose()?;
+        let softirq = s.next().map(|s| Ok(from_str!(u64, s))).transpose()?;
+        let steal = s.next().map(|s| Ok(from_str!(u64, s))).transpose()?;
+        let guest = s.next().map(|s| Ok(from_str!(u64, s))).transpose()?;
+        let guest_nice = s.next().map(|s| Ok(from_str!(u64, s))).transpose()?;
+
+        Ok(CpuTime {
+            user,
+            nice,
+            system,
+            idle,
+            iowait,
+            irq,
+            softirq,
+            steal,
+            guest,
+            guest_nice,
+            tps,
+        })
+    }
+
+    /// Milliseconds spent in user mode
+    pub fn user_ms(&self) -> u64 {
+        let ms_per_tick = 1000 / self.tps;
+        self.user * ms_per_tick
+    }
+
+    /// Time spent in user mode
+    pub fn user_duration(&self) -> Duration {
+        Duration::from_millis(self.user_ms())
+    }
+
+    /// Milliseconds spent in user mode with low priority (nice)
+    pub fn nice_ms(&self) -> u64 {
+        let ms_per_tick = 1000 / self.tps;
+        self.nice * ms_per_tick
+    }
+
+    /// Time spent in user mode with low priority (nice)
+    pub fn nice_duration(&self) -> Duration {
+        Duration::from_millis(self.nice_ms())
+    }
+
+    /// Milliseconds spent in system mode
+    pub fn system_ms(&self) -> u64 {
+        let ms_per_tick = 1000 / self.tps;
+        self.system * ms_per_tick
+    }
+
+    /// Time spent in system mode
+    pub fn system_duration(&self) -> Duration {
+        Duration::from_millis(self.system_ms())
+    }
+
+    /// Milliseconds spent in the idle state
+    pub fn idle_ms(&self) -> u64 {
+        let ms_per_tick = 1000 / self.tps;
+        self.idle * ms_per_tick
+    }
+
+    /// Time spent in the idle state
+    pub fn idle_duration(&self) -> Duration {
+        Duration::from_millis(self.idle_ms())
+    }
+
+    /// Milliseconds spent waiting for I/O to complete
+    pub fn iowait_ms(&self) -> Option<u64> {
+        let ms_per_tick = 1000 / self.tps;
+        self.iowait.map(|io| io * ms_per_tick)
+    }
+
+    /// Time spent waiting for I/O to complete
+    pub fn iowait_duration(&self) -> Option<Duration> {
+        self.iowait_ms().map(Duration::from_millis)
+    }
+
+    /// Milliseconds spent servicing interrupts
+    pub fn irq_ms(&self) -> Option<u64> {
+        let ms_per_tick = 1000 / self.tps;
+        self.irq.map(|ms| ms * ms_per_tick)
+    }
+
+    /// Time spent servicing interrupts
+    pub fn irq_duration(&self) -> Option<Duration> {
+        self.irq_ms().map(Duration::from_millis)
+    }
+
+    /// Milliseconds spent servicing softirqs
+    pub fn softirq_ms(&self) -> Option<u64> {
+        let ms_per_tick = 1000 / self.tps;
+        self.softirq.map(|ms| ms * ms_per_tick)
+    }
+
+    /// Time spent servicing softirqs
+    pub fn softirq_duration(&self) -> Option<Duration> {
+        self.softirq_ms().map(Duration::from_millis)
+    }
+
+    /// Milliseconds of stolen time
+    pub fn steal_ms(&self) -> Option<u64> {
+        let ms_per_tick = 1000 / self.tps;
+        self.steal.map(|ms| ms * ms_per_tick)
+    }
+
+    /// Amount of stolen time
+    pub fn steal_duration(&self) -> Option<Duration> {
+        self.steal_ms().map(Duration::from_millis)
+    }
+
