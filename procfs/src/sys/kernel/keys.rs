@@ -48,3 +48,54 @@ pub fn maxbytes() -> ProcResult<u32> {
 }
 
 /// Set max bytes
+pub fn set_maxbytes(bytes: u32) -> ProcResult<()> {
+    write_value("/proc/sys/kernel/keys/maxbytes", bytes)
+}
+
+/// Max keys
+///
+/// This is the maximum number of keys that a nonroot user may own.
+///
+/// (since linux 2.6.26)
+pub fn maxkeys() -> ProcResult<u32> {
+    read_value("/proc/sys/kernel/keys/maxkeys")
+}
+
+/// Set max keys
+pub fn set_maxkeys(keys: u32) -> ProcResult<()> {
+    write_value("/proc/sys/kernel/keys/maxkeys", keys)
+}
+
+/// Root maxbytes
+///
+/// This is the maximum number of bytes of data that the root user
+/// (UID 0 in the root user namespace) can hold in the payloads of
+/// the keys owned by root.
+///
+/// The default value in this file is 25,000,000 (20,000 before Linux 3.17).
+///
+/// (since Linux 2.6.26)
+pub fn root_maxbytes() -> ProcResult<u32> {
+    read_value("/proc/sys/kernel/keys/root_maxbytes")
+}
+
+/// Set root maxbytes
+pub fn set_root_maxbytes(bytes: u32) -> ProcResult<()> {
+    write_value("/proc/sys/kernel/keys/root_maxbytes", bytes)
+}
+
+/// Root maxkeys
+///
+/// This is the maximum number of keys that the root user (UID 0 in the root user namespace) may own.
+///
+/// The default value in this file is 1,000,000 (200 before Linux 3.17).
+/// (since Linux 2.6.26)
+pub fn root_maxkeys() -> ProcResult<u32> {
+    read_value("/proc/sys/kernel/keys/root_maxkeys")
+}
+
+/// Set root maxkeys
+pub fn set_root_maxkeys(keys: u32) -> ProcResult<()> {
+    write_value("/proc/sys/kernel/keys/root_maxkeys", keys)
+}
+

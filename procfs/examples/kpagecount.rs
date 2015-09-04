@@ -12,18 +12,3 @@
 // Found RAM here: 0x100000000-0x11fffffff
 // Lots of references to this locations: addr=0x1b575000, pfn=111989, refs=134
 //
-
-use procfs::prelude::*;
-
-fn main() {
-    if !rustix::process::geteuid().is_root() {
-        panic!("ERROR: Access to /proc/iomem requires root, re-run with sudo");
-    }
-
-    let page_size = procfs::page_size();
-
-    // /proc/iomem contain a list of memory mapping, but we're only interested in RAM mapping
-    let iomem = procfs::iomem().expect("Can't open /proc/iomem");
-
-    let ram = iomem
-        .iter()
