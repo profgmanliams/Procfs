@@ -110,3 +110,59 @@ bitflags! {
             /// Preserve Argv[0]
             ///
             /// Legacy behavior of binfmt_misc is to overwrite the original argv[0] with the full path to the binary. When
+            /// this flag is included, binfmt_misc will add an argument to the argument vector for this purpose, thus
+            /// preserving the original `argv[0]`.
+            ///
+            /// For example, If your interp is set to `/bin/foo` and you run `blah` (which is in `/usr/local/bin`),
+            /// then the kernel will execute `/bin/foo` with `argv[]` set to `["/bin/foo", "/usr/local/bin/blah", "blah"]`.
+            ///
+            /// The interp has to be aware of this so it can execute `/usr/local/bin/blah` with `argv[]` set to `["blah"]`.
+            const P = 0x01;
+
+            /// Open Binary
+            ///
+            /// Legacy behavior of binfmt_misc is to pass the full path
+            /// of the binary to the interpreter as an argument. When this flag is
+            /// included, binfmt_misc will open the file for reading and pass its
+            /// descriptor as an argument, instead of the full path, thus allowing
+            /// the interpreter to execute non-readable binaries. This feature
+            /// should be used with care - the interpreter has to be trusted not to
+            //// emit the contents of the non-readable binary.
+            const O = 0x02;
+
+            /// Credentials
+            ///
+            ///  Currently, the behavior of binfmt_misc is to calculate
+            /// the credentials and security token of the new process according to
+            /// the interpreter. When this flag is included, these attributes are
+            /// calculated according to the binary. It also implies the `O` flag.
+            /// This feature should be used with care as the interpreter
+            /// will run with root permissions when a setuid binary owned by root
+            /// is run with binfmt_misc.
+            const C = 0x04;
+
+            /// Fix binary
+            ///
+            /// The usual behaviour of binfmt_misc is to spawn the
+            /// binary lazily when the misc format file is invoked.  However,
+            /// this doesn't work very well in the face of mount namespaces and
+            /// changeroots, so the `F` mode opens the binary as soon as the
+            /// emulation is installed and uses the opened image to spawn the
+            /// emulator, meaning it is always available once installed,
+            /// regardless of how the environment changes.
+            const F = 0x08;
+    }
+}
+
+impl BinFmtFlags {
+    pub(crate) fn from_str(s: &str) -> Self {
+        s.chars()
+            .filter_map(|c| match c {
+                'P' => Some(BinFmtFlags::P),
+                'O' => Some(BinFmtFlags::O),
+                'C' => Some(BinFmtFlags::C),
+                'F' => Some(BinFmtFlags::F),
+                _ => None,
+            })
+            .fold(BinFmtFlags::empty(), |a, b| a | b)
+    }
