@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "procfs",
+    "procfs-core",
+]
+
+[workspace.package]
+version = "0.18.0"
+authors = ["Andrew Chin <achin@eminence32.net>"]
