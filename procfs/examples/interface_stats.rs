@@ -22,11 +22,3 @@ fn main() {
         );
         println!(
             "{:>16}  {:<20}               {:<20}",
-            "================", "====================", "===================="
-        );
-        for stat in stats {
-            println!(
-                "{:>16}: {:<20}  {:>6.1} kbps  {:<20}  {:>6.1} kbps ",
-                stat.name,
-                stat.recv_bytes,
-                (stat.recv_bytes - prev_stats.get(&stat.name).unwrap().recv_bytes) as f32 / dt / 1000.0,
