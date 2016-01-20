@@ -322,3 +322,327 @@ thread_local! {
 
 /// Memory page size, in bytes.
 ///
+/// This is calculated from `sysconf(_SC_PAGESIZE)`.
+pub fn page_size() -> u64 {
+    rustix::param::page_size() as u64
+}
+
+impl Current for LoadAverage {
+    const PATH: &'static str = "/proc/loadavg";
+}
+
+impl Current for KernelConfig {
+    const PATH: &'static str = PROC_CONFIG_GZ;
+
+    /// Returns a configuration options used to build the currently running kernel
+    ///
+    /// If CONFIG_KCONFIG_PROC is available, the config is read from `/proc/config.gz`.
+    /// Else look in `/boot/config-$(uname -r)` or `/boot/config` (in that order).
+    ///
+    /// # Notes
+    /// Reading the compress `/proc/config.gz` is only supported if the `flate2` feature is enabled
+    /// (which it is by default).
+    #[cfg_attr(feature = "flate2", doc = "The flate2 feature is currently enabled")]
+    #[cfg_attr(not(feature = "flate2"), doc = "The flate2 feature is NOT currently enabled")]
+    fn current() -> ProcResult<Self> {
+        let reader: Box<dyn Read> = if Path::new(PROC_CONFIG_GZ).exists() && cfg!(feature = "flate2") {
+            #[cfg(feature = "flate2")]
+            {
+                let file = FileWrapper::open(PROC_CONFIG_GZ)?;
+                let decoder = flate2::read::GzDecoder::new(file);
+                Box::new(decoder)
+            }
+            #[cfg(not(feature = "flate2"))]
+            {
+                unreachable!("flate2 feature not enabled")
+            }
+        } else {
+            let kernel = rustix::system::uname();
+
+            let filename = format!("{}-{}", BOOT_CONFIG, kernel.release().to_string_lossy());
+
+            match FileWrapper::open(filename) {
+                Ok(file) => Box::new(BufReader::new(file)),
+                Err(e) => match e.kind() {
+                    io::ErrorKind::NotFound => {
+                        let file = FileWrapper::open(BOOT_CONFIG)?;
+                        Box::new(file)
+                    }
+                    _ => return Err(e.into()),
+                },
+            }
+        };
+
+        Self::from_read(reader)
+    }
+}
+
+/// Returns a configuration options used to build the currently running kernel
+///
+/// If CONFIG_KCONFIG_PROC is available, the config is read from `/proc/config.gz`.
+/// Else look in `/boot/config-$(uname -r)` or `/boot/config` (in that order).
+///
+/// # Notes
+/// Reading the compress `/proc/config.gz` is only supported if the `flate2` feature is enabled
+/// (which it is by default).
+pub fn kernel_config() -> ProcResult<HashMap<String, ConfigSetting>> {
+    KernelConfig::current().map(|c| c.0)
+}
+
+impl CurrentSI for KernelStats {
+    const PATH: &'static str = "/proc/stat";
+}
+
+impl Current for VmStat {
+    const PATH: &'static str = "/proc/vmstat";
+}
+
+/// Get various virtual memory statistics
+///
+/// Since the exact set of statistics will vary from kernel to kernel, and because most of them are
+/// not well documented, this function returns a HashMap instead of a struct. Consult the kernel
+/// source code for more details of this data.
+///
+/// This data is taken from the /proc/vmstat file.
+///
+/// (since Linux 2.6.0)
+pub fn vmstat() -> ProcResult<HashMap<String, i64>> {
+    VmStat::current().map(|s| s.0)
+}
+
+impl Current for KernelModules {
+    const PATH: &'static str = "/proc/modules";
+}
+
+/// Get a list of loaded kernel modules
+///
+/// This corresponds to the data in `/proc/modules`.
+pub fn modules() -> ProcResult<HashMap<String, KernelModule>> {
+    KernelModules::current().map(|m| m.0)
+}
+
+impl Current for KernelCmdline {
+    const PATH: &'static str = "/proc/cmdline";
+}
+
+/// Get a list of the arguments passed to the Linux kernel at boot time
+///
+/// This corresponds to the data in `/proc/cmdline`.
+pub fn cmdline() -> ProcResult<Vec<String>> {
+    KernelCmdline::current().map(|c| c.0)
+}
+
+impl Current for CpuInfo {
+    const PATH: &'static str = "/proc/cpuinfo";
+}
+
+impl Current for Devices {
+    const PATH: &'static str = "/proc/devices";
+}
+
+impl Current for DiskStats {
+    const PATH: &'static str = "/proc/diskstats";
+}
+
+/// Get disk IO stat info from /proc/diskstats
+pub fn diskstats() -> ProcResult<Vec<DiskStat>> {
+    DiskStats::current().map(|d| d.0)
+}
+
+impl Current for Vec<MountEntry> {
+    const PATH: &'static str = "/proc/mounts";
+}
+
+/// Get a list of mountpoints from `/proc/mounts`
+pub fn mounts() -> ProcResult<Vec<MountEntry>> {
+    Vec::<MountEntry>::current()
+}
+
+impl Current for Vec<PartitionEntry> {
+    const PATH: &'static str = "/proc/partitions";
+}
+
+/// Get a list of partitions from `/proc/partitions`
+pub fn partitions() -> ProcResult<Vec<PartitionEntry>> {
+    Vec::<PartitionEntry>::current()
+}
+
+impl Current for Locks {
+    const PATH: &'static str = "/proc/locks";
+}
+
+/// Get a list of current file locks and leases
+///
+/// Since Linux 4.9, the list of locks is filtered to show just the locks
+/// for the processes in the PID namespace for which the `/proc` filesystem
+/// was mounted.
+pub fn locks() -> ProcResult<Vec<Lock>> {
+    Locks::current().map(|l| l.0)
+}
+
+impl Current for Meminfo {
+    const PATH: &'static str = "/proc/meminfo";
+}
+
+impl Current for CpuPressure {
+    const PATH: &'static str = "/proc/pressure/cpu";
+}
+
+impl Current for MemoryPressure {
+    const PATH: &'static str = "/proc/pressure/memory";
+}
+
+impl Current for IoPressure {
+    const PATH: &'static str = "/proc/pressure/io";
+}
+
+impl Current for SharedMemorySegments {
+    const PATH: &'static str = "/proc/sysvipc/shm";
+}
+
+impl Current for Uptime {
+    const PATH: &'static str = "/proc/uptime";
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_statics() {
+        println!("{:?}", crate::sys::kernel::Version::cached());
+    }
+
+    #[test]
+    fn test_loadavg() {
+        let load = LoadAverage::current().unwrap();
+        println!("{:?}", load);
+    }
+
+    #[test]
+    fn test_kernel_config() {
+        // TRAVIS
+        // we don't have access to the kernel_config on travis, so skip that test there
+        match std::env::var("TRAVIS") {
+            Ok(ref s) if s == "true" => return,
+            _ => {}
+        }
+        if !Path::new(PROC_CONFIG_GZ).exists() && !Path::new(BOOT_CONFIG).exists() {
+            return;
+        }
+
+        let config = KernelConfig::current().unwrap();
+        println!("{:#?}", config);
+    }
+
+    #[test]
+    fn test_file_io_errors() {
+        fn inner<P: AsRef<Path>>(p: P) -> Result<(), ProcError> {
+            let mut file = FileWrapper::open(p)?;
+
+            let mut buf = [0; 128];
+            file.read_exact(&mut buf[0..128])?;
+
+            Ok(())
+        }
+
+        let err = inner("/this_should_not_exist").unwrap_err();
+        println!("{}", err);
+
+        match err {
+            ProcError::NotFound(Some(p)) => {
+                assert_eq!(p, Path::new("/this_should_not_exist"));
+            }
+            x => panic!("Unexpected return value: {:?}", x),
+        }
+
+        match inner("/proc/loadavg") {
+            Err(ProcError::Io(_, Some(p))) => {
+                assert_eq!(p, Path::new("/proc/loadavg"));
+            }
+            x => panic!("Unexpected return value: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn test_kernel_stat() {
+        let stat = KernelStats::current().unwrap();
+        println!("{:#?}", stat);
+
+        // the boottime from KernelStats should match the boottime from /proc/uptime
+        let boottime = boot_time_secs().unwrap();
+
+        let diff = (boottime as i32 - stat.btime as i32).abs();
+        assert!(diff <= 1);
+
+        let cpuinfo = CpuInfo::current().unwrap();
+        assert_eq!(cpuinfo.num_cores(), stat.cpu_time.len());
+
+        // the sum of each individual CPU should be equal to the total cpu entry
+        // note: on big machines with 128 cores, it seems that the differences can be rather high,
+        // especially when heavily loaded.  So this test tolerates a 6000-tick discrepancy
+        // (60 seconds in a 100-tick-per-second kernel)
+
+        let user: u64 = stat.cpu_time.iter().map(|i| i.user).sum();
+        let nice: u64 = stat.cpu_time.iter().map(|i| i.nice).sum();
+        let system: u64 = stat.cpu_time.iter().map(|i| i.system).sum();
+        assert!(
+            (stat.total.user as i64 - user as i64).abs() < 6000,
+            "sum:{} total:{} diff:{}",
+            stat.total.user,
+            user,
+            stat.total.user - user
+        );
+        assert!(
+            (stat.total.nice as i64 - nice as i64).abs() < 6000,
+            "sum:{} total:{} diff:{}",
+            stat.total.nice,
+            nice,
+            stat.total.nice - nice
+        );
+        assert!(
+            (stat.total.system as i64 - system as i64).abs() < 6000,
+            "sum:{} total:{} diff:{}",
+            stat.total.system,
+            system,
+            stat.total.system - system
+        );
+
+        let diff = stat.total.idle as i64 - (stat.cpu_time.iter().map(|i| i.idle).sum::<u64>() as i64).abs();
+        assert!(diff < 1000, "idle time difference too high: {}", diff);
+    }
+
+    #[test]
+    fn test_vmstat() {
+        let stat = VmStat::current().unwrap();
+        println!("{:?}", stat);
+    }
+
+    #[test]
+    fn test_modules() {
+        let KernelModules(mods) = KernelModules::current().unwrap();
+        for module in mods.values() {
+            println!("{:?}", module);
+        }
+    }
+
+    #[test]
+    fn tests_tps() {
+        let tps = ticks_per_second();
+        println!("{} ticks per second", tps);
+    }
+
+    #[test]
+    fn test_cmdline() {
+        let KernelCmdline(cmdline) = KernelCmdline::current().unwrap();
+
+        for argument in cmdline {
+            println!("{}", argument);
+        }
+    }
+
+    /// Test that our error type can be easily used with the `failure` crate
+    #[test]
+    fn test_failure() {
+        fn inner() -> Result<(), failure::Error> {
+            let _load = crate::LoadAverage::current()?;
