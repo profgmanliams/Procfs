@@ -24,29 +24,3 @@ pub struct Shm {
     pub cpid: i32,
     /// Last operator PID
     pub lpid: i32,
-    /// Number of attached processes
-    pub nattch: u32,
-    /// User ID
-    pub uid: u16,
-    /// Group ID
-    pub gid: u16,
-    /// Creator UID
-    pub cuid: u16,
-    /// Creator GID
-    pub cgid: u16,
-    /// Time of last `shmat` (attach), epoch
-    pub atime: u64,
-    /// Time of last `shmdt` (detach), epoch
-    pub dtime: u64,
-    /// Time of last permission change, epoch
-    pub ctime: u64,
-    /// Current part of the shared memory resident in memory
-    pub rss: u64,
-    /// Current part of the shared memory in SWAP
-    pub swap: u64,
-}
-
-/// A set of shared memory segments parsed from `/proc/sysvipc/shm`
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
-pub struct SharedMemorySegments(pub Vec<Shm>);
