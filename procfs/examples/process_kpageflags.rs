@@ -38,3 +38,23 @@ fn main() {
     // We allocate memory for a value. This is a trick to get a semi random value
     // The goal is to find this value in physical memory
     let chrono = std::time::Instant::now();
+    let variable: u8 = chrono.elapsed().as_nanos() as u8;
+
+    // We could do the same with a constant, the compiler will place this value in a different memory mapping with different properties
+    //let constant = 42u8;
+
+    // `ptr` is the virtual address we are looking for
+    let ptr = &variable as *const u8;
+    println!("Virtual address of `variable`: {:p}", ptr);
+
+    for memory_map in mem_map {
+        let mem_start = memory_map.address.0;
+        let mem_end = memory_map.address.1;
+
+        if (ptr as u64) < mem_start || (ptr as u64) >= mem_end {
+            // pointer is not in this memory mapping
+            continue;
+        }
+
+        // found the memory mapping where the value is stored
+        println!("Found memory mapping\n{:?}", memory_map);
