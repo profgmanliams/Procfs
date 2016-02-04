@@ -22,28 +22,3 @@ pub enum Syscall {
         argument_registers: [u64; 6],
         /// e.g. rsp
         stack_pointer: u64,
-        /// e.g. rip
-        program_counter: u64,
-    },
-}
-
-impl crate::FromRead for Syscall {
-    fn from_read<R: Read>(mut r: R) -> ProcResult<Self> {
-        // read in entire thing, this is only going to be 1 line
-        let mut buf = Vec::with_capacity(512);
-        r.read_to_end(&mut buf)?;
-
-        let line = String::from_utf8_lossy(&buf);
-        let buf = line.trim();
-
-        if buf == "running" {
-            Ok(Self::Running)
-        } else {
-            let mut values = buf.split(' ');
-
-            let syscall_number: i64 = expect!(from_iter(&mut values), "failed to read syscall number");
-
-            let mut argument_registers: [u64; 6] = [0; 6];
-            for arg_reg in argument_registers.iter_mut() {
-                *arg_reg = expect!(from_iter_radix(&mut values, 16), "failed to read argument register");
-            }
