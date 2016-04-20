@@ -52,21 +52,3 @@ pub enum ClearRefs {
     ///
     /// Reset the peak resident set size ("high water
     /// mark") to the process's current resident set size
-    /// value.
-    PeakRSS = 5,
-}
-
-impl fmt::Display for ClearRefs {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                ClearRefs::PGReferencedAll => 1,
-                ClearRefs::PGReferencedAnonymous => 2,
-                ClearRefs::PGReferencedFile => 3,
-                ClearRefs::SoftDirty => 4,
-                ClearRefs::PeakRSS => 5,
-            }
-        )
-    }
