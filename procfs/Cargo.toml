@@ -1,0 +1,20 @@
+[package]
+name = "procfs"
+documentation = "https://docs.rs/procfs/"
+description = "Interface to the linux procfs pseudo-filesystem"
+readme = "../README.md"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+backtrace = ["dep:backtrace", "procfs-core/backtrace"]
+default = ["chrono", "flate2", "procfs-core/default"]
+serde1 = ["serde", "procfs-core/serde1"]
+
+[dependencies]
