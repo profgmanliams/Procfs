@@ -42,3 +42,25 @@ pub fn read_wakeup_threshold() -> ProcResult<u32> {
 
 /// This file contains the number of bits of entropy below which we wake up processes that do a
 /// select(2) or poll(2) for write access to /dev/random. These values can be changed by writing to the file.
+pub fn write_wakeup_threshold(new_value: u32) -> ProcResult<()> {
+    write_value(Path::new(RANDOM_ROOT).join("write_wakeup_threshold"), new_value)
+}
+
+/// This read-only file randomly generates a fresh 128-bit UUID on each read
+pub fn uuid() -> ProcResult<String> {
+    read_value(Path::new(RANDOM_ROOT).join("uuid"))
+}
+
+/// This is a read-only file containing a 128-bit UUID generated at boot
+pub fn boot_id() -> ProcResult<String> {
+    read_value(Path::new(RANDOM_ROOT).join("boot_id"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_entropy_avail() {
+        let entropy = entropy_avail().unwrap();
+        assert!(entropy <= 4096);
