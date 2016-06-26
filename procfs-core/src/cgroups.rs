@@ -31,3 +31,37 @@ pub struct CGroupController {
 // hashmap instead
 pub struct CGroupControllers(pub Vec<CGroupController>);
 
+impl crate::FromBufRead for CGroupControllers {
+    fn from_buf_read<R: BufRead>(reader: R) -> ProcResult<Self> {
+        let mut vec = Vec::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.starts_with('#') {
+                continue;
+            }
+
+            let mut s = line.split_whitespace();
+            let name = expect!(s.next(), "name").to_owned();
+            let hierarchy = from_str!(u32, expect!(s.next(), "hierarchy"));
+            let num_cgroups = from_str!(u32, expect!(s.next(), "num_cgroups"));
+            let enabled = expect!(s.next(), "enabled") == "1";
+
+            vec.push(CGroupController {
+                name,
+                hierarchy,
+                num_cgroups,
+                enabled,
+            });
+        }
+
+        Ok(CGroupControllers(vec))
+    }
+}
+
+/// Information about a process cgroup
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct ProcessCGroup {
+    /// For cgroups version 1 hierarchies, this field contains a  unique  hierarchy  ID  number
+    /// that  can  be  matched  to  a  hierarchy  ID  in /proc/cgroups.  For the cgroups version 2
