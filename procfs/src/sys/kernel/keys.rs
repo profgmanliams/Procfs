@@ -23,28 +23,3 @@ pub fn gc_delay() -> ProcResult<u32> {
 
 /// Persistent Keyring Expiry
 ///
-/// This file defines an interval, in seconds, to which the persistent
-/// keyring's expiration timer is reset each time the
-/// keyring is accessed (via keyctl_get_persistent(3) or the
-/// keyctl(2) KEYCTL_GET_PERSISTENT operation.)
-///
-/// The default value in this file is 259200 (i.e., 3 days).
-///
-/// (Since Linux 3.13)
-pub fn persistent_keyring_expiry() -> ProcResult<u32> {
-    read_value("/proc/sys/kernel/keys/persistent_keyring_expiry")
-}
-
-/// Max bytes
-///
-/// This is the maximum number of bytes of data that a nonroot
-/// user can hold in the payloads of the keys owned by the user.
-///
-/// The default value in this file is 20,000.
-///
-/// (since linux 2.6.26)
-pub fn maxbytes() -> ProcResult<u32> {
-    read_value("/proc/sys/kernel/keys/maxbytes")
-}
-
-/// Set max bytes
