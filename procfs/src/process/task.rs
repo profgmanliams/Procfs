@@ -69,3 +69,74 @@ impl Task {
     pub fn io(&self) -> ProcResult<Io> {
         self.read("io")
     }
+
+    /// Thread scheduler info from `/proc/<pid>/task/<tid>/schedstat`
+    ///
+    /// This data will be unique per task.
+    pub fn schedstat(&self) -> ProcResult<Schedstat> {
+        self.read("schedstat")
+    }
+
+    /// Returns the status info from `/proc/<pid>/task/<tid>/syscall`.
+    pub fn syscall(&self) -> ProcResult<Syscall> {
+        self.read("syscall")
+    }
+
+    /// Thread children from `/proc/<pid>/task/<tid>/children`
+    ///
+    /// WARNING:
+    /// This interface is not reliable unless all the child processes are stopped or frozen.
+    /// If a child task exits while the file is being read, non-exiting children may be omitted.
+    /// See the procfs(5) man page for more information.
+    ///
+    /// This data will be unique per task.
+    pub fn children(&self) -> ProcResult<Vec<u32>> {
+        let mut buf = String::new();
+        let mut file = FileWrapper::open_at(&self.root, &self.fd, "children")?;
+        file.read_to_string(&mut buf)?;
+        buf.split_whitespace()
+            .map(|child| {
+                child
+                    .parse()
+                    .map_err(|_| ProcError::Other("Failed to parse task's child PIDs".to_string()))
+            })
+            .collect()
+    }
+
+    /// Deliberately generate an IO error
+    #[cfg(test)]
+    pub(crate) fn generate_error(&self) -> ProcResult<()> {
+        let _ = FileWrapper::open_at(&self.root, &self.fd, "does_not_exist")?;
+        Ok(())
+    }
+
+    /// Parse a file relative to the task proc structure.
+    pub fn read<P, T>(&self, path: P) -> ProcResult<T>
+    where
+        P: AsRef<Path>,
+        T: FromRead,
+    {
+        FromRead::from_read(FileWrapper::open_at(&self.root, &self.fd, path)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::process::{Io, Syscall};
+    use crate::ProcError;
+    use rustix;
+    use std::process;
+    use std::sync::{Arc, Barrier};
+
+    #[test]
+    #[cfg(not(tarpaulin))] // this test is unstable under tarpaulin, and i'm yet sure why
+                           // When this test runs in CI, run it single-threaded
+    fn test_task_runsinglethread() {
+        use std::io::Read;
+
+        let me = crate::process::Process::myself().unwrap();
+
+        let (work_barrier, w_a, w_b) = {
+            let b = Arc::new(Barrier::new(3));
+            (b.clone(), b.clone(), b)
+        };

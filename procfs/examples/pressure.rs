@@ -10,3 +10,9 @@ fn main() {
         print_pressure(pressure.full, 20);
     }
     if let Ok(pressure) = CpuPressure::current() {
+        println!("CPU Pressure:");
+        print_pressure(pressure.some, 20);
+    }
+    if let Ok(pressure) = IoPressure::current() {
+        println!("IO Pressure:");
+        println!("{:>10}:", "Some");
