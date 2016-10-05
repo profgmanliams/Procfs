@@ -169,3 +169,88 @@ impl BuildInfo {
                 break;
             }
         }
+        let version_number: u32 = version_str.parse().map_err(|_| "Failed to parse version number")?;
+        Ok(version_number)
+    }
+
+    /// Parse extra field to `DateTime` object
+    ///
+    /// This function may fail as TIMESTAMP can be various formats.
+    #[cfg(feature = "chrono")]
+    pub fn extra_date(&self) -> ProcResult<chrono::DateTime<chrono::Local>> {
+        if let Ok(dt) =
+            chrono::DateTime::parse_from_str(&format!("{} +0000", &self.extra), "%a %b %d %H:%M:%S UTC %Y %z")
+        {
+            return Ok(dt.with_timezone(&chrono::Local));
+        }
+        if let Ok(dt) = chrono::DateTime::parse_from_str(&self.extra, "%a, %d %b %Y %H:%M:%S %z") {
+            return Ok(dt.with_timezone(&chrono::Local));
+        }
+        Err(ProcError::Other("Failed to parse extra field to date".to_string()))
+    }
+}
+
+impl FromStr for BuildInfo {
+    type Err = &'static str;
+
+    /// Parse a kernel build information string
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut version = String::new();
+        let mut flags: HashSet<String> = HashSet::new();
+        let mut extra: String = String::new();
+
+        let mut splited = s.split(' ');
+        let version_str = splited.next();
+        if let Some(version_str) = version_str {
+            if let Some(stripped) = version_str.strip_prefix('#') {
+                version.push_str(stripped);
+            } else {
+                return Err("Failed to parse kernel build version");
+            }
+        } else {
+            return Err("Failed to parse kernel build version");
+        }
+
+        for s in &mut splited {
+            if s.chars().all(char::is_uppercase) {
+                flags.insert(s.to_string());
+            } else {
+                extra.push_str(s);
+                extra.push(' ');
+                break;
+            }
+        }
+        let remains: Vec<&str> = splited.collect();
+        extra.push_str(&remains.join(" "));
+
+        Ok(BuildInfo { version, flags, extra })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+/// Represents the data from `/proc/sys/kernel/sem`
+pub struct SemaphoreLimits {
+    /// The maximum semaphores per semaphore set
+    pub semmsl: u64,
+    /// A system-wide limit on the number of semaphores in all semaphore sets
+    pub semmns: u64,
+    /// The maximum number of operations that may be specified in a semop(2) call
+    pub semopm: u64,
+    /// A system-wide limit on the maximum number of semaphore identifiers
+    pub semmni: u64,
+}
+
+impl SemaphoreLimits {
+    fn from_str(s: &str) -> Result<Self, &'static str> {
+        let mut s = s.split_ascii_whitespace();
+
+        let semmsl = s.next().ok_or("Missing SEMMSL")?;
+        let semmns = s.next().ok_or("Missing SEMMNS")?;
+        let semopm = s.next().ok_or("Missing SEMOPM")?;
+        let semmni = s.next().ok_or("Missing SEMMNI")?;
+
+        let semmsl = semmsl.parse().map_err(|_| "Failed to parse SEMMSL")?;
+        let semmns = semmns.parse().map_err(|_| "Failed to parse SEMMNS")?;
+        let semopm = semopm.parse().map_err(|_| "Failed to parse SEMOPM")?;
+        let semmni = semmni.parse().map_err(|_| "Failed to parse SEMMNI")?;
+
