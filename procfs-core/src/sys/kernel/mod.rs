@@ -254,3 +254,89 @@ impl SemaphoreLimits {
         let semopm = semopm.parse().map_err(|_| "Failed to parse SEMOPM")?;
         let semmni = semmni.parse().map_err(|_| "Failed to parse SEMMNI")?;
 
+        Ok(SemaphoreLimits {
+            semmsl,
+            semmns,
+            semopm,
+            semmni,
+        })
+    }
+}
+
+impl FromStr for SemaphoreLimits {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        SemaphoreLimits::from_str(s)
+    }
+}
+
+bitflags! {
+    /// Flags representing allowed sysrq functions
+    #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+    pub struct AllowedFunctions : u16 {
+        /// Enable control of console log level
+        const ENABLE_CONTROL_LOG_LEVEL = 2;
+        /// Enable control of keyboard (SAK, unraw)
+        const ENABLE_CONTROL_KEYBOARD = 4;
+        /// Enable debugging dumps of processes etc
+        const ENABLE_DEBUGGING_DUMPS = 8;
+        /// Enable sync command
+        const ENABLE_SYNC_COMMAND = 16;
+        /// Enable remound read-only
+        const ENABLE_REMOUNT_READ_ONLY = 32;
+        /// Enable signaling of processes (term, kill, oom-kill)
+        const ENABLE_SIGNALING_PROCESSES = 64;
+        /// Allow reboot/poweroff
+        const ALLOW_REBOOT_POWEROFF = 128;
+        /// Allow nicing of all real-time tasks
+        const ALLOW_NICING_REAL_TIME_TASKS = 256;
+    }
+}
+
+/// Values controlling functions allowed to be invoked by the SysRq key
+#[derive(Copy, Clone, Debug)]
+pub enum SysRq {
+    /// Disable sysrq completely
+    Disable,
+    /// Enable all functions of sysrq
+    Enable,
+    /// Bitmask of allowed sysrq functions
+    AllowedFunctions(AllowedFunctions),
+}
+
+impl SysRq {
+    pub fn to_number(self) -> u16 {
+        match self {
+            SysRq::Disable => 0,
+            SysRq::Enable => 1,
+            SysRq::AllowedFunctions(allowed) => allowed.bits(),
+        }
+    }
+
+    fn from_str(s: &str) -> ProcResult<Self> {
+        match s.parse::<u16>()? {
+            0 => Ok(SysRq::Disable),
+            1 => Ok(SysRq::Enable),
+            x => match AllowedFunctions::from_bits(x) {
+                Some(allowed) => Ok(SysRq::AllowedFunctions(allowed)),
+                None => Err("Invalid value".into()),
+            },
+        }
+    }
+}
+
+impl FromStr for SysRq {
+    type Err = ProcError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        SysRq::from_str(s)
+    }
+}
+
+/// The minimum value that can be written to `/proc/sys/kernel/threads-max` on Linux 4.1 or later
+pub const THREADS_MIN: u32 = 20;
+/// The maximum value that can be written to `/proc/sys/kernel/threads-max` on Linux 4.1 or later
+pub const THREADS_MAX: u32 = 0x3fff_ffff;
+
+#[cfg(test)]

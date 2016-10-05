@@ -125,3 +125,66 @@ impl super::Current for InterfaceDeviceStatus {
 ///
 /// For an example, see the [interface_stats.rs](https://github.com/eminence/procfs/tree/master/procfs/examples)
 /// example in the source repo.
+///
+/// Note that this returns information from the networking namespace of the
+/// current process.  If you want information for some otherr process, see
+/// [Process::dev_status()](crate::process::Process::dev_status())
+pub fn dev_status() -> ProcResult<HashMap<String, DeviceStatus>> {
+    InterfaceDeviceStatus::current().map(|e| e.0)
+}
+
+impl super::Current for RouteEntries {
+    const PATH: &'static str = "/proc/net/route";
+}
+
+/// Reads the ipv4 route table
+///
+/// This data is from the `/proc/net/route` file
+///
+/// Note that this returns information from the networking namespace of the
+/// current process.  If you want information for some other process, see
+/// [Process::route()](crate::process::Process::route())
+pub fn route() -> ProcResult<Vec<RouteEntry>> {
+    RouteEntries::current().map(|r| r.0)
+}
+
+impl super::Current for Snmp {
+    const PATH: &'static str = "/proc/net/snmp";
+}
+
+/// Reads the network management information by Simple Network Management Protocol
+///
+/// This data is from the `/proc/net/snmp` file and for IPv4 Protocol
+///
+/// Note that this returns information from the networking namespace of the
+/// current process.  If you want information for some other process, see
+/// [Process::snmp()](crate::process::Process::snmp())
+pub fn snmp() -> ProcResult<Snmp> {
+    Snmp::current()
+}
+
+impl super::Current for Snmp6 {
+    const PATH: &'static str = "/proc/net/snmp6";
+}
+
+/// Reads the network management information of IPv6 by Simple Network Management Protocol
+///
+/// This data is from the `/proc/net/snmp6` file and for IPv6 Protocol
+///
+/// Note that this returns information from the networking namespace of the
+/// current process.  If you want information for some other process, see
+/// [Process::snmp6()](crate::process::Process::snmp6())
+pub fn snmp6() -> ProcResult<Snmp6> {
+    Snmp6::current()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tcp() {
+        for entry in tcp().unwrap() {
+            println!("{:?}", entry);
+            assert_eq!(entry.state, TcpState::from_u8(entry.state.to_u8()).unwrap());
+        }
