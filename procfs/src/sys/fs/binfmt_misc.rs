@@ -166,3 +166,59 @@ impl BinFmtFlags {
             })
             .fold(BinFmtFlags::empty(), |a, b| a | b)
     }
+}
+
+pub fn list() -> ProcResult<Vec<BinFmtEntry>> {
+    let path = Path::new("/proc/sys/fs/binfmt_misc/");
+
+    let mut v = Vec::new();
+
+    for entry in wrap_io_error!(path, path.read_dir())? {
+        let entry = entry?;
+        if entry.file_name() == "status" || entry.file_name() == "register" {
+            // these entries do not represent real entries
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        let data = std::fs::read_to_string(entry.path())?;
+
+        v.push(BinFmtEntry::from_string(name, &data)?);
+    }
+
+    Ok(v)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_enabled() {
+        match enabled() {
+            Ok(_) => {}
+            Err(crate::ProcError::NotFound(_)) => {}
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
+    fn parse_magic() {
+        let mask = "7f454c460201010000000000000000000200f300";
+
+        let data = hex_to_vec(mask).unwrap();
+        println!("{:?}", data);
+        assert_eq!(data.len(), 20);
+        assert_eq!(data[0], 0x7f);
+        assert_eq!(data[1], 0x45);
+
+        assert!(hex_to_vec("a").is_err());
+        assert!(hex_to_vec("zz").is_err());
+    }
+
+    #[test]
+    fn flags_parsing() {
+        assert!(BinFmtFlags::from_str("").is_empty());
+
+        let flags = BinFmtFlags::from_str("F");
