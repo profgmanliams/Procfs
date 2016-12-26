@@ -209,3 +209,109 @@ pub enum KeyType {
 
     /// Other specialized, but rare keys types
     Other(String),
+}
+
+impl KeyType {
+    fn from_str(s: &str) -> KeyType {
+        match s {
+            "keyring" => KeyType::Keyring,
+            "user" => KeyType::User,
+            "logon" => KeyType::Logon,
+            "big_key" => KeyType::BigKey,
+            other => KeyType::Other(other.to_string()),
+        }
+    }
+}
+
+/// A key
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct Key {
+    /// The ID (serial number) of the key
+    pub id: u64,
+
+    /// A set of flags describing the state of the key
+    pub flags: KeyFlags,
+
+    /// Count of the number of kernel credential structures that are
+    /// pinning  the  key  (approximately: the number of threads and open file
+    /// references that refer to this key).
+    pub usage: u32,
+
+    /// Key timeout
+    pub timeout: KeyTimeout,
+
+    /// Key permissions
+    pub permissions: Permissions,
+
+    /// The user ID of the key owner
+    pub uid: u32,
+
+    /// The group ID of the key.
+    ///
+    /// The value of `None` here means that the key has no group ID; this can occur in certain circumstances for
+    /// keys created by the kernel.
+    pub gid: Option<u32>,
+
+    /// The type of key
+    pub key_type: KeyType,
+
+    /// The key description
+    pub description: String,
+}
+
+impl Key {
+    fn from_line(s: &str) -> ProcResult<Key> {
+        let mut s = s.split_whitespace();
+
+        let id = from_str!(u64, expect!(s.next()), 16);
+        let s_flags = expect!(s.next());
+        let usage = from_str!(u32, expect!(s.next()));
+        let s_timeout = expect!(s.next());
+        let s_perms = expect!(s.next());
+        let uid = from_str!(u32, expect!(s.next()));
+        let s_gid = expect!(s.next());
+        let s_type = expect!(s.next());
+        let desc: Vec<_> = s.collect();
+
+        Ok(Key {
+            id,
+            flags: KeyFlags::from_str(s_flags),
+            usage,
+            timeout: KeyTimeout::from_str(s_timeout)?,
+            permissions: Permissions::from_str(s_perms)?,
+            uid,
+            gid: if s_gid == "-1" {
+                None
+            } else {
+                Some(from_str!(u32, s_gid))
+            },
+            key_type: KeyType::from_str(s_type),
+            description: desc.join(" "),
+        })
+    }
+}
+
+/// A set of keys.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct Keys(pub Vec<Key>);
+
+impl crate::FromBufRead for Keys {
+    fn from_buf_read<R: BufRead>(r: R) -> ProcResult<Self> {
+        let mut v = Vec::new();
+
+        for line in r.lines() {
+            let line = line?;
+            v.push(Key::from_line(&line)?);
+        }
+        Ok(Keys(v))
+    }
+}
+
+/// Information about a user with at least one key
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct KeyUser {
+    /// The user that owns the key
+    pub uid: u32,
