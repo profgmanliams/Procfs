@@ -34,39 +34,3 @@ fn main() {
             // total_time is in seconds
             let total_time =
                 (stat.utime + stat.stime) as f32 / (tps as f32);
-            println!(
-                "{: >5} {: <8} {: >8} {}",
-                stat.pid, tty, total_time, stat.comm
-            );
-        }
-    }
-}
-
-```
-
-Here's another example that shows how to get the current memory usage of the current process:
-
-```rust
-use procfs::process::Process;
-
-fn main() {
-    let me = Process::myself().unwrap();
-    let me_stat = me.stat().unwrap();
-    println!("PID: {}", me.pid);
-
-    let page_size = procfs::page_size();
-    println!("Memory page size: {}", page_size);
-
-    println!("== Data from /proc/self/stat:");
-    println!("Total virtual memory used: {} bytes", me_stat.vsize);
-    println!(
-        "Total resident set: {} pages ({} bytes)",
-        me_stat.rss,
-        me_stat.rss * page_size
-    );
-}
-
-```
-
-There are a few ways to get this data, so also checkout the longer
-[self_memory](https://github.com/eminence/procfs/blob/master/procfs/examples/self_memory.rs) example for more
