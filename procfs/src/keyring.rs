@@ -14,19 +14,3 @@ pub fn keys() -> ProcResult<Vec<Key>> {
 
 impl Current for KeyUsers {
     const PATH: &'static str = "/proc/key-users";
-}
-
-/// Get various information for each user ID that has at least one key on the system.
-pub fn key_users() -> ProcResult<HashMap<u32, KeyUser>> {
-    KeyUsers::current().map(|k| k.0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_keys() {
-        for key in keys().unwrap() {
-            println!("{:#?}", key);
-        }
