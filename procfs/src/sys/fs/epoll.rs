@@ -8,3 +8,13 @@ use crate::{read_value, write_value, ProcResult};
 ///
 /// (Since Linux 2.6.28)
 pub fn max_user_watches() -> ProcResult<u64> {
+    read_value("/proc/sys/fs/epoll/max_user_watches")
+}
+
+/// Sets the limit on the total number of file descriptors that a user can register across all epoll instances.
+pub fn set_max_user_watches(val: u64) -> ProcResult<()> {
+    write_value("/proc/sys/fs/epoll/max_user_watches", val)
+}
+
+#[cfg(test)]
+mod tests {
