@@ -43,25 +43,3 @@ bitflags! {
         const SWAPCACHE = 1 << 13;
         /// The page is backed by swap/RAM
         const SWAPBACKED = 1 << 14;
-        /// A compound page with order N consists of 2^N physically contiguous pages. A compound page with order 2 takes the form of “HTTT”, where H donates its head page and T donates its tail page(s). The major consumers of compound pages are hugeTLB pages (<https://www.kernel.org/doc/html/latest/admin-guide/mm/hugetlbpage.html#hugetlbpage>), the SLUB etc. memory allocators and various device drivers. However in this interface, only huge/giga pages are made visible to end users
-        const COMPOUND_HEAD = 1 << 15;
-        /// A compound page tail (see description above)
-        const COMPOUND_TAIL = 1 << 16;
-        /// This is an integral part of a HugeTLB page
-        const HUGE = 1 << 17;
-        /// The page is in the unevictable (non-)LRU list It is somehow pinned and not a candidate for LRU page reclaims, e.g. ramfs pages, shmctl(SHM_LOCK) and mlock() memory segments
-        const UNEVICTABLE = 1 << 18;
-        /// Hardware detected memory corruption on this page: don’t touch the data!
-        const HWPOISON = 1 << 19;
-        /// No page frame exists at the requested address
-        const NOPAGE = 1 << 20;
-        /// Identical memory pages dynamically shared between one or more processes
-        const KSM = 1 << 21;
-        /// Contiguous pages which construct transparent hugepages
-        const THP = 1 << 22;
-        /// The page is logically offline
-        const OFFLINE = 1 << 23;
-        /// Zero page for pfn_zero or huge_zero page
-        const ZERO_PAGE = 1 << 24;
-        /// The page has not been accessed since it was marked idle (see <https://www.kernel.org/doc/html/latest/admin-guide/mm/idle_page_tracking.html#idle-page-tracking>). Note that this flag may be stale in case the page was accessed via a PTE. To make sure the flag is up-to-date one has to read /sys/kernel/mm/page_idle/bitmap first
-        const IDLE = 1 << 25;

@@ -79,3 +79,84 @@ pub struct Meminfo {
     /// (since Linux 2.6.28)
     pub active_file: Option<u64>,
     /// [To be documented.]
+    ///
+    /// (since Linux 2.6.28)
+    pub inactive_file: Option<u64>,
+    /// [To be documented.]
+    ///
+    /// (From Linux 2.6.28 to 2.6.30, CONFIG_UNEVICTABLE_LRU was required.)
+    pub unevictable: Option<u64>,
+    /// [To be documented.]
+    ///
+    /// (From Linux 2.6.28 to 2.6.30, CONFIG_UNEVICTABLE_LRU was required.)
+    pub mlocked: Option<u64>,
+    /// Total amount of highmem.
+    ///
+    /// Highmem is all memory above ~860MB of physical  memory.  Highmem areas are for use by
+    /// user-space programs, or for the page cache.  The kernel must use tricks to access this
+    /// memory, making it slower to access than lowmem.
+    ///
+    /// (Starting with Linux 2.6.19, CONFIG_HIGHMEM is required.)
+    pub high_total: Option<u64>,
+    /// Amount of free highmem.
+    ///
+    /// (Starting with Linux 2.6.19, CONFIG_HIGHMEM is required.)
+    pub high_free: Option<u64>,
+    /// Total amount of lowmem.
+    ///
+    /// Lowmem is memory which can be used for every thing  that highmem can be used for,
+    /// but it is also available for the kernel's use for its own data structures.
+    /// Among many other things, it is where everything from Slab is allocated.
+    /// Bad things happen when you're out of lowmem.
+    ///
+    /// (Starting with Linux 2.6.19, CONFIG_HIGHMEM is required.)
+    pub low_total: Option<u64>,
+    /// Amount of free lowmem.
+    ///
+    /// (Starting with Linux 2.6.19, CONFIG_HIGHMEM is required.)
+    pub low_free: Option<u64>,
+    /// [To be documented.]
+    ///
+    /// (since Linux 2.6.29.  CONFIG_MMU is required.)
+    pub mmap_copy: Option<u64>,
+    /// Total amount of swap space available.
+    pub swap_total: u64,
+    /// Amount of swap space that is currently unused.
+    pub swap_free: u64,
+    /// Memory which is waiting to get written back to the disk.
+    pub dirty: u64,
+    /// Memory which is actively being written back to the disk.
+    pub writeback: u64,
+    /// Non-file backed pages mapped into user-space page tables.
+    ///
+    /// (since Linux 2.6.18)
+    pub anon_pages: Option<u64>,
+    /// Files which have been mapped into memory (with mmap(2)), such as libraries.
+    pub mapped: u64,
+    /// Amount of memory consumed in tmpfs(5) filesystems.
+    ///
+    /// (since Linux 2.6.32)
+    pub shmem: Option<u64>,
+    /// In-kernel data structures cache.
+    pub slab: u64,
+    /// Part of Slab, that can be reclaimed on memory pressure.
+    ///
+    /// (since Linux 2.6.19)
+    pub s_reclaimable: Option<u64>,
+    /// Part of Slab, that cannot be reclaimed on memory pressure.
+    ///
+    /// (since Linux 2.6.19)
+    pub s_unreclaim: Option<u64>,
+    /// Amount of memory allocated to kernel stacks.
+    ///
+    /// (since Linux 2.6.32)
+    pub kernel_stack: Option<u64>,
+    /// Amount of memory dedicated to the lowest level of page tables.
+    ///
+    /// (since Linux 2.6.18)
+    pub page_tables: Option<u64>,
+    /// Amount of memory allocated for secondary page tables. This currently includes KVM mmu
+    /// allocations on x86 and arm64.
+    ///
+    /// (since Linux 6.1)
+    pub secondary_page_tables: Option<u64>,
