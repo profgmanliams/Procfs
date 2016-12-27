@@ -20,25 +20,3 @@ pub fn entropy_avail() -> ProcResult<u16> {
 ///
 /// See `man random(4)` for more information
 pub fn poolsize() -> ProcResult<u16> {
-    read_value(Path::new(RANDOM_ROOT).join("poolsize"))
-}
-
-/// This file contains the number of bits of entropy required for waking up processes that sleep waiting
-/// for entropy from /dev/random
-///
-/// The default is 64.
-///
-/// This will first attempt to read from `/proc/sys/kernel/random/read_wakeup_threshold` but it
-/// will fallback to `/proc/sys/kernel/random/write_wakeup_threshold` if the former file is not found.
-pub fn read_wakeup_threshold() -> ProcResult<u32> {
-    match read_value(Path::new(RANDOM_ROOT).join("read_wakeup_threshold")) {
-        Ok(val) => Ok(val),
-        Err(err) => match err {
-            ProcError::NotFound(_) => read_value(Path::new(RANDOM_ROOT).join("write_wakeup_threshold")),
-            err => Err(err),
-        },
-    }
-}
-
-/// This file contains the number of bits of entropy below which we wake up processes that do a
-/// select(2) or poll(2) for write access to /dev/random. These values can be changed by writing to the file.

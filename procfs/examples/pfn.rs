@@ -11,3 +11,16 @@
 
 use procfs::process::MMapPath;
 use procfs::process::Process;
+
+fn main() {
+    if !rustix::process::geteuid().is_root() {
+        println!("WARNING: Access to /proc/<PID>/pagemap requires root, re-run with sudo");
+    }
+
+    let page_size = procfs::page_size();
+
+    let process = Process::myself().expect("Unable to load myself!");
+
+    let mut pagemap = process.pagemap().unwrap();
+    let mem_map = process.maps().unwrap();
+
