@@ -49,20 +49,3 @@ impl super::FromBufRead for Vec<PartitionEntry> {
     }
 }
 
-#[test]
-fn test_partitions() {
-    use crate::FromBufRead;
-    use std::io::Cursor;
-
-    let s = "major minor  #blocks  name
-
- 259        0 1000204632 nvme0n1
- 259        1    1048576 nvme0n1p1
- 259        2    1048576 nvme0n1p2
- 259        3  104857600 nvme0n1p3
- 259        4  893248512 nvme0n1p4
- 253        0  104841216 dm-0
- 252        0    8388608 zram0
- 253        1  893232128 dm-1
-   8        0    3953664 sda
-   8        1    2097152 sda1
