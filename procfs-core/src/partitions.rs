@@ -32,20 +32,3 @@ impl super::FromBufRead for Vec<PartitionEntry> {
 
             let major = expect!(u16::from_str(expect!(s.next())));
             let minor = expect!(u16::from_str(expect!(s.next())));
-            let blocks = expect!(u64::from_str(expect!(s.next())));
-            let name = expect!(s.next()).to_string();
-
-            let partition_entry = PartitionEntry {
-                major,
-                minor,
-                blocks,
-                name,
-            };
-
-            vec.push(partition_entry);
-        }
-
-        Ok(vec)
-    }
-}
-
