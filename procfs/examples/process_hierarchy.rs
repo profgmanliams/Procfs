@@ -27,18 +27,3 @@ fn main() {
     .collect();
     // Iterate through all processes and start with top-level processes.
     // Those can be identified by checking if their parent PID is zero.
-    for process in &processes {
-        if process.stat.ppid == 0 {
-            print_process(process, &processes, 0);
-        }
-    }
-}
-
-/// Take a process, print its command and recursively list all child processes.
-/// This function will call itself until no further children can be found.
-/// It's a depth-first tree exploration.
-///
-/// depth: The hierarchical depth of the process
-fn print_process(process: &ProcessEntry, all_processes: &Vec<ProcessEntry>, depth: usize) {
-    let cmdline = match &process.cmdline {
-        Some(cmdline) => cmdline.join(" "),
