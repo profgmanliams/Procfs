@@ -133,3 +133,139 @@ pub struct Meminfo {
     pub anon_pages: Option<u64>,
     /// Files which have been mapped into memory (with mmap(2)), such as libraries.
     pub mapped: u64,
+    /// Amount of memory consumed in tmpfs(5) filesystems.
+    ///
+    /// (since Linux 2.6.32)
+    pub shmem: Option<u64>,
+    /// In-kernel data structures cache.
+    pub slab: u64,
+    /// Part of Slab, that can be reclaimed on memory pressure.
+    ///
+    /// (since Linux 2.6.19)
+    pub s_reclaimable: Option<u64>,
+    /// Part of Slab, that cannot be reclaimed on memory pressure.
+    ///
+    /// (since Linux 2.6.19)
+    pub s_unreclaim: Option<u64>,
+    /// Amount of memory allocated to kernel stacks.
+    ///
+    /// (since Linux 2.6.32)
+    pub kernel_stack: Option<u64>,
+    /// Amount of memory dedicated to the lowest level of page tables.
+    ///
+    /// (since Linux 2.6.18)
+    pub page_tables: Option<u64>,
+    /// Amount of memory allocated for secondary page tables. This currently includes KVM mmu
+    /// allocations on x86 and arm64.
+    ///
+    /// (since Linux 6.1)
+    pub secondary_page_tables: Option<u64>,
+    /// [To be documented.]
+    ///
+    /// (CONFIG_QUICKLIST is required.  Since Linux 2.6.27)
+    pub quicklists: Option<u64>,
+    /// NFS pages sent to the server, but not yet committed to stable storage.
+    ///
+    /// (since Linux 2.6.18)
+    pub nfs_unstable: Option<u64>,
+    /// Memory used for block device "bounce buffers".
+    ///
+    /// (since Linux 2.6.18)
+    pub bounce: Option<u64>,
+    /// Memory used by FUSE for temporary writeback buffers.
+    ///
+    /// (since Linux 2.6.26)
+    pub writeback_tmp: Option<u64>,
+    /// This is the total amount of memory currently available to be allocated on the system,
+    /// expressed  in bytes.
+    ///
+    /// This  limit  is adhered  to  only if strict overcommit
+    /// accounting is enabled (mode 2 in /proc/sys/vm/overcommit_memory).  The limit is calculated
+    /// according to the formula described under /proc/sys/vm/overcommit_memory.  For further
+    /// details, see the kernel source  file
+    /// [Documentation/vm/overcommit-accounting](https://www.kernel.org/doc/Documentation/vm/overcommit-accounting).
+    ///
+    /// (since Linux 2.6.10)
+    pub commit_limit: Option<u64>,
+    /// The  amount of memory presently allocated on the system.
+    ///
+    /// The committed memory is a sum of all of the memory which has been allocated
+    /// by processes, even if it has not been "used" by them as of yet.  A process which allocates 1GB of memory  (using  malloc(3)
+    /// or  similar),  but  touches only 300MB of that memory will show up as using only 300MB of memory even if it has the address space
+    /// allocated for the entire 1GB.
+    ///
+    /// This 1GB is memory which has been "committed" to by the VM and can be used at any  time  by  the  allocating  application.   With
+    /// strict  overcommit  enabled  on  the  system  (mode 2 in /proc/sys/vm/overcommit_memory), allocations which would exceed the Committed_AS
+    /// mitLimit will not be permitted.  This is useful if one needs to guarantee that processes will not fail due to lack of memory once
+    /// that memory has been successfully allocated.
+    pub committed_as: u64,
+    /// Total size of vmalloc memory area.
+    pub vmalloc_total: u64,
+    /// Amount of vmalloc area which is used.
+    pub vmalloc_used: u64,
+    /// Largest contiguous block of vmalloc area which is free.
+    pub vmalloc_chunk: u64,
+    /// [To be documented.]
+    ///
+    /// (CONFIG_MEMORY_FAILURE is required.  Since Linux 2.6.32)
+    pub hardware_corrupted: Option<u64>,
+    /// Non-file backed huge pages mapped into user-space page tables.
+    ///
+    /// (CONFIG_TRANSPARENT_HUGEPAGE is required.  Since Linux 2.6.38)
+    pub anon_hugepages: Option<u64>,
+    /// Memory used by shared memory (shmem) and tmpfs(5) allocated with huge pages
+    ///
+    /// (CONFIG_TRANSPARENT_HUGEPAGE is required.  Since Linux 4.8)
+    pub shmem_hugepages: Option<u64>,
+    /// Shared memory mapped into user space with huge pages.
+    ///
+    /// (CONFIG_TRANSPARENT_HUGEPAGE is required.  Since Linux 4.8)
+    pub shmem_pmd_mapped: Option<u64>,
+    /// Total CMA (Contiguous Memory Allocator) pages.
+    ///
+    /// (CONFIG_CMA is required.  Since Linux 3.1)
+    pub cma_total: Option<u64>,
+    /// Free CMA (Contiguous Memory Allocator) pages.
+    ///
+    /// (CONFIG_CMA is required.  Since Linux 3.1)
+    pub cma_free: Option<u64>,
+    /// The size of the pool of huge pages.
+    ///
+    /// CONFIG_HUGETLB_PAGE is required.)
+    pub hugepages_total: Option<u64>,
+    /// The number of huge pages in the pool that are not yet allocated.
+    ///
+    /// (CONFIG_HUGETLB_PAGE is required.)
+    pub hugepages_free: Option<u64>,
+    /// This is the number of huge pages for which a commitment to allocate from the pool has been
+    /// made, but no allocation has yet been made.
+    ///
+    /// These reserved huge pages guarantee that an application will be able  to  allocate  a
+    /// huge page from the pool of huge pages at fault time.
+    ///
+    /// (CONFIG_HUGETLB_PAGE  is  required.  Since Linux 2.6.17)
+    pub hugepages_rsvd: Option<u64>,
+    /// This is the number of huge pages in the pool above the value in /proc/sys/vm/nr_hugepages.
+    ///
+    /// The maximum number of surplus huge pages is controlled by /proc/sys/vm/nr_overcommit_hugepages.
+    ///
+    /// (CONFIG_HUGETLB_PAGE  is  required.  Since Linux 2.6.24)
+    pub hugepages_surp: Option<u64>,
+    /// The size of huge pages.
+    ///
+    /// (CONFIG_HUGETLB_PAGE is required.)
+    pub hugepagesize: Option<u64>,
+    /// Number of bytes of RAM linearly mapped by kernel in 4kB pages.  (x86.)
+    ///
+    /// (since Linux 2.6.27)
+    pub direct_map_4k: Option<u64>,
+    /// Number of bytes of RAM linearly mapped by kernel in 4MB pages.
+    ///
+    /// (x86 with CONFIG_X86_64 or CONFIG_X86_PAE enabled.  Since Linux 2.6.27)
+    pub direct_map_4M: Option<u64>,
+    /// Number of bytes of RAM linearly mapped by kernel in 2MB pages.
+    ///
+    /// (x86 with neither CONFIG_X86_64 nor CONFIG_X86_PAE enabled.  Since Linux 2.6.27)
+    pub direct_map_2M: Option<u64>,
+    /// (x86 with CONFIG_X86_64 and CONFIG_X86_DIRECT_GBPAGES enabled.  Since Linux 2.6.27)
+    pub direct_map_1G: Option<u64>,
