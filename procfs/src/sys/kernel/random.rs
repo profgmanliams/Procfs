@@ -64,3 +64,25 @@ mod tests {
     fn test_entropy_avail() {
         let entropy = entropy_avail().unwrap();
         assert!(entropy <= 4096);
+    }
+
+    #[test]
+    fn test_poolsize() {
+        // The kernel support section in the root lib.rs file says that we only aim to support >= 2.6 kernels,
+        // so only test that case
+        let _poolsize = poolsize().unwrap();
+    }
+
+    #[test]
+    fn test_read_wakeup_threshold() {
+        let threshold = read_wakeup_threshold().unwrap();
+
+        println!("{}", threshold);
+    }
+
+    #[test]
+    fn test_write_wakeup_threshold() {
+        let old_threshold = read_wakeup_threshold().unwrap();
+
+        match write_wakeup_threshold(1024) {
+            Ok(_) => (),
