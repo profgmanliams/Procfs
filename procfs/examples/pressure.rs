@@ -13,10 +13,3 @@ fn main() {
         println!("CPU Pressure:");
         print_pressure(pressure.some, 20);
     }
-    if let Ok(pressure) = IoPressure::current() {
-        println!("IO Pressure:");
-        println!("{:>10}:", "Some");
-        print_pressure(pressure.some, 20);
-        println!("{:>10}:", "Full");
-        print_pressure(pressure.full, 20);
-    }
