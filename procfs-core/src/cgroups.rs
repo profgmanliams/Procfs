@@ -65,3 +65,36 @@ impl crate::FromBufRead for CGroupControllers {
 pub struct ProcessCGroup {
     /// For cgroups version 1 hierarchies, this field contains a  unique  hierarchy  ID  number
     /// that  can  be  matched  to  a  hierarchy  ID  in /proc/cgroups.  For the cgroups version 2
+    /// hierarchy, this field contains the value 0.
+    pub hierarchy: u32,
+    /// For cgroups version 1 hierarchies, this field contains a comma-separated list of the
+    /// controllers bound to the hierarchy.
+    ///
+    /// For the cgroups version 2 hierarchy, this field is empty.
+    pub controllers: Vec<String>,
+
+    /// This field contains the pathname of the control group in the hierarchy to which the process
+    /// belongs.
+    ///
+    /// This pathname is  relative  to  the mount point of the hierarchy.
+    pub pathname: String,
+}
+
+/// Information about process cgroups.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct ProcessCGroups(pub Vec<ProcessCGroup>);
+
+impl crate::FromBufRead for ProcessCGroups {
+    fn from_buf_read<R: BufRead>(reader: R) -> ProcResult<Self> {
+        let mut vec = Vec::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.starts_with('#') {
+                continue;
+            }
+
+            let mut s = line.splitn(3, ':');
+            let hierarchy = from_str!(u32, expect!(s.next(), "hierarchy"));
+            let controllers = expect!(s.next(), "controllers")
