@@ -12,3 +12,17 @@ pub struct Schedstat {
     /// Time spent on the cpu.
     ///
     /// Measured in nanoseconds.
+    pub sum_exec_runtime: u64,
+    /// Time spent waiting on a runqueue.
+    ///
+    /// Measured in nanoseconds.
+    pub run_delay: u64,
+    /// \# of timeslices run on this cpu.
+    pub pcount: u64,
+}
+
+impl crate::FromRead for Schedstat {
+    fn from_read<R: Read>(mut r: R) -> ProcResult<Self> {
+        let mut line = String::new();
+        r.read_to_string(&mut line)?;
+        let mut s = line.split_whitespace();
