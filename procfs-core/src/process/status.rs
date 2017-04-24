@@ -134,3 +134,139 @@ pub struct Status {
     /// Masks of capabilities enabled in permitted sets (see capabilities(7)).
     pub capprm: u64,
     /// Masks of capabilities enabled in effective sets (see capabilities(7)).
+    pub capeff: u64,
+    /// Capability Bounding set (since Linux 2.6.26, see capabilities(7)).
+    pub capbnd: Option<u64>,
+    /// Ambient capability set (since Linux 4.3, see capabilities(7)).
+    pub capamb: Option<u64>,
+    /// Value of the no_new_privs bit (since Linux 4.10, see prctl(2)).
+    pub nonewprivs: Option<u64>,
+    /// Seccomp mode of the process (since Linux 3.8, see
+    /// seccomp(2)).  0 means SECCOMP_MODE_DISABLED; 1 means SEC‐
+    /// COMP_MODE_STRICT; 2 means SECCOMP_MODE_FILTER.  This field
+    /// is provided only if the kernel was built with the CON‐
+    /// FIG_SECCOMP kernel configuration option enabled.
+    pub seccomp: Option<u32>,
+    /// Speculative store bypass mitigation status.
+    pub speculation_store_bypass: Option<String>,
+    /// Mask of CPUs on which this process may run (since Linux 2.6.24, see cpuset(7)).
+    pub cpus_allowed: Option<Vec<u32>>,
+    /// Same as previous, but in "list format" (since Linux 2.6.26, see cpuset(7)).
+    pub cpus_allowed_list: Option<Vec<(u32, u32)>>,
+    /// Mask of memory nodes allowed to this process (since Linux 2.6.24, see cpuset(7)).
+    pub mems_allowed: Option<Vec<u32>>,
+    /// Same as previous, but in "list format" (since Linux 2.6.26, see cpuset(7)).
+    pub mems_allowed_list: Option<Vec<(u32, u32)>>,
+    /// Number of voluntary context switches (since Linux 2.6.23).
+    pub voluntary_ctxt_switches: Option<u64>,
+    /// Number of involuntary context switches (since Linux 2.6.23).
+    pub nonvoluntary_ctxt_switches: Option<u64>,
+
+    /// Contains true if the process is currently dumping core.
+    ///
+    /// This information can be used by a monitoring process to avoid killing a processing that is
+    /// currently dumping core, which could result in a corrupted core dump file.
+    ///
+    /// (Since Linux 4.15)
+    pub core_dumping: Option<bool>,
+
+    /// Contains true if the process is allowed to use THP
+    ///
+    /// (Since Linux 5.0)
+    pub thp_enabled: Option<bool>,
+}
+
+impl crate::FromBufRead for Status {
+    fn from_buf_read<R: BufRead>(reader: R) -> ProcResult<Self> {
+        let mut map = HashMap::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.is_empty() {
+                continue;
+            }
+            let mut s = line.split(':');
+            let field = expect!(s.next());
+            let value = expect!(s.next()).trim();
+
+            map.insert(field.to_string(), value.to_string());
+        }
+
+        let status = Status {
+            name: expect!(map.remove("Name")),
+            umask: map.remove("Umask").map(|x| Ok(from_str!(u32, &x, 8))).transpose()?,
+            state: expect!(map.remove("State")),
+            tgid: from_str!(i32, &expect!(map.remove("Tgid"))),
+            ngid: map.remove("Ngid").map(|x| Ok(from_str!(i32, &x))).transpose()?,
+            pid: from_str!(i32, &expect!(map.remove("Pid"))),
+            ppid: from_str!(i32, &expect!(map.remove("PPid"))),
+            tracerpid: from_str!(i32, &expect!(map.remove("TracerPid"))),
+            ruid: expect!(Status::parse_uid_gid(expect!(map.get("Uid")), 0)),
+            euid: expect!(Status::parse_uid_gid(expect!(map.get("Uid")), 1)),
+            suid: expect!(Status::parse_uid_gid(expect!(map.get("Uid")), 2)),
+            fuid: expect!(Status::parse_uid_gid(&expect!(map.remove("Uid")), 3)),
+            rgid: expect!(Status::parse_uid_gid(expect!(map.get("Gid")), 0)),
+            egid: expect!(Status::parse_uid_gid(expect!(map.get("Gid")), 1)),
+            sgid: expect!(Status::parse_uid_gid(expect!(map.get("Gid")), 2)),
+            fgid: expect!(Status::parse_uid_gid(&expect!(map.remove("Gid")), 3)),
+            fdsize: from_str!(u32, &expect!(map.remove("FDSize"))),
+            groups: Status::parse_list(&expect!(map.remove("Groups")))?,
+            nstgid: map.remove("NStgid").map(|x| Status::parse_list(&x)).transpose()?,
+            nspid: map.remove("NSpid").map(|x| Status::parse_list(&x)).transpose()?,
+            nspgid: map.remove("NSpgid").map(|x| Status::parse_list(&x)).transpose()?,
+            nssid: map.remove("NSsid").map(|x| Status::parse_list(&x)).transpose()?,
+            vmpeak: Status::parse_with_kb(map.remove("VmPeak"))?,
+            vmsize: Status::parse_with_kb(map.remove("VmSize"))?,
+            vmlck: Status::parse_with_kb(map.remove("VmLck"))?,
+            vmpin: Status::parse_with_kb(map.remove("VmPin"))?,
+            vmhwm: Status::parse_with_kb(map.remove("VmHWM"))?,
+            vmrss: Status::parse_with_kb(map.remove("VmRSS"))?,
+            rssanon: Status::parse_with_kb(map.remove("RssAnon"))?,
+            rssfile: Status::parse_with_kb(map.remove("RssFile"))?,
+            rssshmem: Status::parse_with_kb(map.remove("RssShmem"))?,
+            vmdata: Status::parse_with_kb(map.remove("VmData"))?,
+            vmstk: Status::parse_with_kb(map.remove("VmStk"))?,
+            vmexe: Status::parse_with_kb(map.remove("VmExe"))?,
+            vmlib: Status::parse_with_kb(map.remove("VmLib"))?,
+            vmpte: Status::parse_with_kb(map.remove("VmPTE"))?,
+            vmswap: Status::parse_with_kb(map.remove("VmSwap"))?,
+            hugetlbpages: Status::parse_with_kb(map.remove("HugetlbPages"))?,
+            threads: from_str!(u64, &expect!(map.remove("Threads"))),
+            sigq: expect!(Status::parse_sigq(&expect!(map.remove("SigQ")))),
+            sigpnd: from_str!(u64, &expect!(map.remove("SigPnd")), 16),
+            shdpnd: from_str!(u64, &expect!(map.remove("ShdPnd")), 16),
+            sigblk: from_str!(u64, &expect!(map.remove("SigBlk")), 16),
+            sigign: from_str!(u64, &expect!(map.remove("SigIgn")), 16),
+            sigcgt: from_str!(u64, &expect!(map.remove("SigCgt")), 16),
+            capinh: from_str!(u64, &expect!(map.remove("CapInh")), 16),
+            capprm: from_str!(u64, &expect!(map.remove("CapPrm")), 16),
+            capeff: from_str!(u64, &expect!(map.remove("CapEff")), 16),
+            capbnd: map.remove("CapBnd").map(|x| Ok(from_str!(u64, &x, 16))).transpose()?,
+            capamb: map.remove("CapAmb").map(|x| Ok(from_str!(u64, &x, 16))).transpose()?,
+            nonewprivs: map.remove("NoNewPrivs").map(|x| Ok(from_str!(u64, &x))).transpose()?,
+            seccomp: map.remove("Seccomp").map(|x| Ok(from_str!(u32, &x))).transpose()?,
+            speculation_store_bypass: map.remove("Speculation_Store_Bypass"),
+            cpus_allowed: map
+                .remove("Cpus_allowed")
+                .map(|x| Status::parse_allowed(&x))
+                .transpose()?,
+            cpus_allowed_list: map
+                .remove("Cpus_allowed_list")
+                .and_then(|x| Status::parse_allowed_list(&x).ok()),
+            mems_allowed: map
+                .remove("Mems_allowed")
+                .map(|x| Status::parse_allowed(&x))
+                .transpose()?,
+            mems_allowed_list: map
+                .remove("Mems_allowed_list")
+                .and_then(|x| Status::parse_allowed_list(&x).ok()),
+            voluntary_ctxt_switches: map
+                .remove("voluntary_ctxt_switches")
+                .map(|x| Ok(from_str!(u64, &x)))
+                .transpose()?,
+            nonvoluntary_ctxt_switches: map
+                .remove("nonvoluntary_ctxt_switches")
+                .map(|x| Ok(from_str!(u64, &x)))
+                .transpose()?,
+            core_dumping: map.remove("CoreDumping").map(|x| x == "1"),
+            thp_enabled: map.remove("THP_enabled").map(|x| x == "1"),

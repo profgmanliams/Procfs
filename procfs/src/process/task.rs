@@ -140,3 +140,74 @@ mod tests {
             let b = Arc::new(Barrier::new(3));
             (b.clone(), b.clone(), b)
         };
+        let (done_barrier, d_a, d_b) = {
+            let b = Arc::new(Barrier::new(3));
+            (b.clone(), b.clone(), b)
+        };
+
+        let bytes_to_read = 2_000_000;
+
+        // create a new task to do some work
+        let join_a = std::thread::Builder::new()
+            .name("one".to_owned())
+            .spawn(move || {
+                let mut vec = Vec::new();
+                let zero = std::fs::File::open("/dev/zero").unwrap();
+
+                zero.take(bytes_to_read).read_to_end(&mut vec).unwrap();
+                assert_eq!(vec.len(), bytes_to_read as usize);
+
+                // spin for about 52 ticks (utime accounting isn't perfectly accurate)
+                let dur = std::time::Duration::from_millis(52 * (1000 / crate::ticks_per_second()) as u64);
+                let start = std::time::Instant::now();
+                while start.elapsed() <= dur {
+                    // spin
+                }
+
+                w_a.wait();
+                d_a.wait()
+            })
+            .unwrap();
+
+        // create a new task that does nothing
+        let join_b = std::thread::Builder::new()
+            .name("two".to_owned())
+            .spawn(move || {
+                w_b.wait();
+                d_b.wait();
+            })
+            .unwrap();
+
+        work_barrier.wait();
+
+        let mut found_one = false;
+        let mut found_two = false;
+        let mut summed_io = Io {
+            rchar: 0,
+            wchar: 0,
+            syscr: 0,
+            syscw: 0,
+            read_bytes: 0,
+            write_bytes: 0,
+            cancelled_write_bytes: 0,
+        };
+        for task in me.tasks().unwrap() {
+            let task = task.unwrap();
+            let stat = task.stat().unwrap();
+            let status = task.status().unwrap();
+            let io = task.io().unwrap();
+            let syscall = task.syscall().unwrap();
+
+            summed_io.rchar += io.rchar;
+            summed_io.wchar += io.wchar;
+            summed_io.syscr += io.syscr;
+            summed_io.syscw += io.syscw;
+            summed_io.read_bytes += io.read_bytes;
+            summed_io.write_bytes += io.write_bytes;
+            summed_io.cancelled_write_bytes += io.cancelled_write_bytes;
+
+            if stat.comm == "one" && status.name == "one" {
+                found_one = true;
+                assert!(io.rchar >= bytes_to_read);
+                assert!(stat.utime >= 50, "utime({}) too small", stat.utime);
+                assert!(matches!(syscall, Syscall::Blocked { .. }), "{:?}", syscall);
