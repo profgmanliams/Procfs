@@ -13,11 +13,3 @@ fn main() {
     for mount in mounts {
         // parse the majmin string (something like "0:3") into an (i32, i32) tuple
         let (maj, min): (i32, i32) = {
-            let mut s = mount.majmin.split(':');
-            (s.next().unwrap().parse().unwrap(), s.next().unwrap().parse().unwrap())
-        };
-
-        if let Some(stat) = disk_stats.get(&(maj, min)) {
-            println!("{} mounted on {}:", stat.name, mount.mount_point.display());
-            println!("  total reads: {} ({} ms)", stat.reads, stat.time_reading);
-            println!("  total writes: {} ({} ms)", stat.writes, stat.time_writing);
