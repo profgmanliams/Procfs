@@ -15,20 +15,3 @@ pub struct PartitionEntry {
     pub major: u16,
     /// Device minor number
     pub minor: u16,
-    /// Number of 1024 byte blocks
-    pub blocks: u64,
-    /// Device name
-    pub name: String,
-}
-
-impl super::FromBufRead for Vec<PartitionEntry> {
-    fn from_buf_read<R: BufRead>(r: R) -> ProcResult<Self> {
-        let mut vec = Vec::new();
-
-        for line in r.lines().skip(2) {
-            let line = expect!(line);
-
-            let mut s = line.split_whitespace();
-
-            let major = expect!(u16::from_str(expect!(s.next())));
-            let minor = expect!(u16::from_str(expect!(s.next())));

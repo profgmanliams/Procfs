@@ -57,3 +57,63 @@ impl super::FromBufRead for CpuPressure {
 }
 
 /// Memory pressure information
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct MemoryPressure {
+    /// This record indicates the share of time in which at least some tasks are stalled.
+    pub some: PressureRecord,
+    /// This record indicates this share of time in which all non-idle tasks are stalled
+    /// simultaneously.
+    pub full: PressureRecord,
+}
+
+impl super::FromBufRead for MemoryPressure {
+    fn from_buf_read<R: std::io::BufRead>(r: R) -> ProcResult<Self> {
+        let (some, full) = get_pressure(r)?;
+        Ok(MemoryPressure { some, full })
+    }
+}
+
+/// IO pressure information
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct IoPressure {
+    /// This record indicates the share of time in which at least some tasks are stalled.
+    pub some: PressureRecord,
+    /// This record indicates this share of time in which all non-idle tasks are stalled
+    /// simultaneously.
+    pub full: PressureRecord,
+}
+
+impl super::FromBufRead for IoPressure {
+    fn from_buf_read<R: std::io::BufRead>(r: R) -> ProcResult<Self> {
+        let (some, full) = get_pressure(r)?;
+        Ok(IoPressure { some, full })
+    }
+}
+
+fn get_f32(map: &HashMap<&str, &str>, value: &str) -> ProcResult<f32> {
+    map.get(value).map_or_else(
+        || Err(ProcError::Incomplete(None)),
+        |v| v.parse::<f32>().map_err(|_| ProcError::Incomplete(None)),
+    )
+}
+
+fn get_total(map: &HashMap<&str, &str>) -> ProcResult<u64> {
+    map.get("total").map_or_else(
+        || Err(ProcError::Incomplete(None)),
+        |v| v.parse::<u64>().map_err(|_| ProcError::Incomplete(None)),
+    )
+}
+
+/// Parse a single `some`/`full` pressure record in the following format:
+///
+/// ```text
+/// full avg10=2.10 avg60=0.12 avg300=0.00 total=391926
+/// ```
+///
+/// See also [`get_pressure`].
+pub fn parse_pressure_record(line: &str) -> ProcResult<PressureRecord> {
+    let mut parsed = HashMap::new();
+
+    if !line.starts_with("some") && !line.starts_with("full") {
