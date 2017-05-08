@@ -19,3 +19,13 @@ fn main() {
                 if let FDTarget::Socket(inode) = fd.unwrap().target {
                     map.insert(inode, stat.clone());
                 }
+            }
+        }
+    }
+
+    // get the tcp table
+    let tcp = procfs::net::tcp().unwrap();
+    let tcp6 = procfs::net::tcp6().unwrap();
+
+    println!(
+        "{:<26} {:<26} {:<15} {:<8} {}",
