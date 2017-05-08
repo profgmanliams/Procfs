@@ -19,3 +19,45 @@ pub struct Shm {
     /// Access permissions, as octal
     pub perms: u16,
     /// Size in bytes
+    pub size: u64,
+    /// Creator PID
+    pub cpid: i32,
+    /// Last operator PID
+    pub lpid: i32,
+    /// Number of attached processes
+    pub nattch: u32,
+    /// User ID
+    pub uid: u16,
+    /// Group ID
+    pub gid: u16,
+    /// Creator UID
+    pub cuid: u16,
+    /// Creator GID
+    pub cgid: u16,
+    /// Time of last `shmat` (attach), epoch
+    pub atime: u64,
+    /// Time of last `shmdt` (detach), epoch
+    pub dtime: u64,
+    /// Time of last permission change, epoch
+    pub ctime: u64,
+    /// Current part of the shared memory resident in memory
+    pub rss: u64,
+    /// Current part of the shared memory in SWAP
+    pub swap: u64,
+}
+
+/// A set of shared memory segments parsed from `/proc/sysvipc/shm`
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct SharedMemorySegments(pub Vec<Shm>);
+
+impl super::FromBufRead for SharedMemorySegments {
+    fn from_buf_read<R: io::BufRead>(r: R) -> ProcResult<Self> {
+        let mut vec = Vec::new();
+
+        // See printing code here:
+        // https://elixir.bootlin.com/linux/latest/source/ipc/shm.c#L1737
+        for line in r.lines().skip(1) {
+            let line = expect!(line);
+            let mut s = line.split_whitespace();
+
