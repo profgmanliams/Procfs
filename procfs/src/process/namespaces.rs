@@ -11,3 +11,29 @@ impl Process {
     pub fn namespaces(&self) -> ProcResult<Namespaces> {
         let mut namespaces = HashMap::new();
         let dir_ns = wrap_io_error!(
+            self.root.join("ns"),
+            rustix::fs::openat(
+                &self.fd,
+                "ns",
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+                Mode::empty()
+            )
+        )?;
+        let dir = wrap_io_error!(self.root.join("ns"), rustix::fs::Dir::read_from(&dir_ns))?;
+        for entry in dir {
+            let entry = entry.map_err(|_| build_internal_error!(format!("Unable to get ns dir entry")))?;
+            match entry.file_name().to_bytes() {
+                b"." | b".." => continue,
+                _ => {}
+            };
+
+            let path = self.root.join("ns").join(entry.file_name().to_string_lossy().as_ref());
+            let ns_type = OsString::from(entry.file_name().to_string_lossy().as_ref());
+            let stat = rustix::fs::statat(&dir_ns, entry.file_name(), AtFlags::empty())
+                .map_err(|_| build_internal_error!(format!("Unable to stat {:?}", path)))?;
+
+            if let Some(n) = namespaces.insert(
+                ns_type.clone(),
+                Namespace {
+                    ns_type,
+                    path,
