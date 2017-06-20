@@ -60,3 +60,34 @@ pub struct DiskStat {
     pub in_progress: u64,
 
     /// Time spent doing I/Os (ms)
+    pub time_in_progress: u64,
+
+    /// Weighted time spent doing I/Os (ms)
+    pub weighted_time_in_progress: u64,
+
+    /// Discards completed successfully
+    ///
+    /// (since kernel 4.18)
+    pub discards: Option<u64>,
+
+    /// Discards merged
+    pub discards_merged: Option<u64>,
+
+    /// Sectors discarded
+    pub sectors_discarded: Option<u64>,
+
+    /// Time spent discarding
+    pub time_discarding: Option<u64>,
+
+    /// Flush requests completed successfully
+    ///
+    /// (since kernel 5.5)
+    pub flushes: Option<u64>,
+
+    /// Time spent flushing
+    pub time_flushing: Option<u64>,
+}
+
+/// A list of disk stats.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]

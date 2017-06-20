@@ -33,21 +33,3 @@ impl KPageCount {
         let reader = BufReader::new(FileWrapper::open(path)?);
 
         Ok(Self { reader })
-    }
-
-    /// Get the number of references to physical memory at `pfn`
-    ///
-    /// Return Err if pfn is not in RAM. See [crate::iomem()] for a list of valid physical RAM addresses
-    ///
-    /// See [crate::process::Process::pagemap] and [crate::process::MemoryPageFlags::get_page_frame_number]
-    pub fn get_count_at_pfn(&mut self, pfn: Pfn) -> ProcResult<u64> {
-        self.get_count_in_range(pfn, Pfn(pfn.0 + 1))
-            .map(|mut vec| vec.pop().unwrap())
-    }
-
-    /// Get the number of references to physical memory at for PFNs within `start` and `end` PFNs, `end` is excluded
-    ///
-    /// Return Err if any pfn is not in RAM. See [crate::iomem()] for a list of valid physical RAM addresses
-    ///
-    /// See [crate::process::Process::pagemap] and [crate::process::MemoryPageFlags::get_page_frame_number]
-    pub fn get_count_in_range(&mut self, start: Pfn, end: Pfn) -> ProcResult<Vec<u64>> {
