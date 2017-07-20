@@ -6,11 +6,3 @@ fn main() {
     let mut prev_stats = procfs::net::dev_status().unwrap();
     let mut prev_now = std::time::Instant::now();
     loop {
-        std::thread::sleep(delay);
-        let now = std::time::Instant::now();
-        let dev_stats = procfs::net::dev_status().unwrap();
-
-        // calculate diffs from previous
-        let dt = (now - prev_now).as_millis() as f32 / 1000.0;
-
-        let mut stats: Vec<_> = dev_stats.values().collect();
