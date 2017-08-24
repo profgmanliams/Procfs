@@ -32,38 +32,3 @@ impl DEntryState {
         let age_limit_sec = from_str!(u32, expect!(s.next()));
         let want_pages = from_str!(u32, expect!(s.next()));
 
-        Ok(DEntryState {
-            nr_dentry,
-            nr_unused,
-            age_limit: Duration::from_secs(age_limit_sec as u64),
-            want_pages: want_pages != 0,
-        })
-    }
-}
-
-/// Get information about the status of the directory cache (dcache)
-///
-/// Linux Linux 2.2
-pub fn dentry_state() -> ProcResult<DEntryState> {
-    let s: String = read_file("/proc/sys/fs/dentry-state")?;
-
-    DEntryState::from_str(&s)
-}
-
-/// Get the system-wide limit on the number of open files for all processes.
-///
-/// System calls that fail when encoun‐ tering this limit fail with the error `ENFILE`.
-pub fn file_max() -> ProcResult<usize> {
-    read_value("/proc/sys/fs/file-max")
-}
-
-/// Set the system-wide limit on the number of open files for all processes.
-pub fn set_file_max(max: usize) -> ProcResult<()> {
-    write_value("/proc/sys/fs/file-max", max)
-}
-#[derive(Debug, Clone)]
-pub struct FileState {
-    /// The number of allocated file handles.
-    ///
-    /// (i.e. the number of files presently opened)
-    pub allocated: u64,
