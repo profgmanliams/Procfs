@@ -14,19 +14,3 @@ use procfs::process::Process;
 
 fn main() {
     if !rustix::process::geteuid().is_root() {
-        println!("WARNING: Access to /proc/<PID>/pagemap requires root, re-run with sudo");
-    }
-
-    let page_size = procfs::page_size();
-
-    let process = Process::myself().expect("Unable to load myself!");
-
-    let mut pagemap = process.pagemap().unwrap();
-    let mem_map = process.maps().unwrap();
-
-    for memory_map in mem_map {
-        let va_start = memory_map.address.0;
-        let va_end = memory_map.address.1;
-
-        let vpn_start = (va_start / page_size) as usize;
-        let vpn_end = (va_end / page_size) as usize;
