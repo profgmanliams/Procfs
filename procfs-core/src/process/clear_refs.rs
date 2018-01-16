@@ -16,21 +16,3 @@ use std::fmt;
 /// The `/proc/[pid]/clear_refs` file is present only if the
 /// CONFIG_PROC_PAGE_MONITOR kernel configuration option is
 /// enabled.
-///
-/// Only writable by the owner of the process
-///
-/// See `procfs::Process::clear_refs()` and `procfs::Process::pagemap()`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ClearRefs {
-    /// (since Linux 2.6.22)
-    ///
-    ///  Reset the PG_Referenced and ACCESSED/YOUNG bits for
-    ///  all the pages associated with the process.  (Before
-    ///  kernel 2.6.32, writing any nonzero value to this
-    ///  file had this effect.)
-    PGReferencedAll = 1,
-    /// (since Linux 2.6.32)
-    ///
-    /// Reset the PG_Referenced and ACCESSED/YOUNG bits for
-    /// all anonymous pages associated with the process.
-    PGReferencedAnonymous = 2,
