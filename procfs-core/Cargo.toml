@@ -7,12 +7,3 @@ version.workspace = true
 authors.workspace = true
 repository.workspace = true
 keywords.workspace = true
-categories.workspace = true
-license.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-
-[features]
-default = ["chrono"]
-serde1 = ["serde", "bitflags/serde"]
-
