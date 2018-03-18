@@ -8,23 +8,3 @@ fn main() {
     loop {
         std::thread::sleep(delay);
         let now = std::time::Instant::now();
-        let dev_stats = procfs::net::dev_status().unwrap();
-
-        // calculate diffs from previous
-        let dt = (now - prev_now).as_millis() as f32 / 1000.0;
-
-        let mut stats: Vec<_> = dev_stats.values().collect();
-        stats.sort_by_key(|s| &s.name);
-        println!();
-        println!(
-            "{:>16}: {:<20}               {:<20} ",
-            "Interface", "bytes recv", "bytes sent"
-        );
-        println!(
-            "{:>16}  {:<20}               {:<20}",
-            "================", "====================", "===================="
-        );
-        for stat in stats {
-            println!(
-                "{:>16}: {:<20}  {:>6.1} kbps  {:<20}  {:>6.1} kbps ",
-                stat.name,
