@@ -1,7 +1,3 @@
 [workspace]
 members = [
     "procfs",
-    "procfs-core",
-]
-
-[workspace.package]
