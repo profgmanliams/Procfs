@@ -94,3 +94,99 @@ mod tests {
     fn test_devices() {
         use crate::FromBufRead;
         use std::io::Cursor;
+
+        let s = "Character devices:
+  1 mem
+  4 /dev/vc/0
+  4 tty
+  4 ttyS
+  5 /dev/tty
+  5 /dev/console
+  5 /dev/ptmx
+  7 vcs
+ 10 misc
+ 13 input
+ 29 fb
+ 90 mtd
+136 pts
+180 usb
+188 ttyUSB
+189 usb_device
+
+Block devices:
+  7 loop
+  8 sd
+ 65 sd
+ 71 sd
+128 sd
+135 sd
+254 device-mapper
+259 blkext
+";
+
+        let cursor = Cursor::new(s);
+        let devices = Devices::from_buf_read(cursor).unwrap();
+        let (chrs, blks) = (devices.char_devices, devices.block_devices);
+
+        assert_eq!(chrs.len(), 16);
+
+        assert_eq!(chrs[1].major, 4);
+        assert_eq!(chrs[1].name, "/dev/vc/0");
+
+        assert_eq!(chrs[8].major, 10);
+        assert_eq!(chrs[8].name, "misc");
+
+        assert_eq!(chrs[15].major, 189);
+        assert_eq!(chrs[15].name, "usb_device");
+
+        assert_eq!(blks.len(), 8);
+
+        assert_eq!(blks[0].major, 7);
+        assert_eq!(blks[0].name, "loop");
+
+        assert_eq!(blks[7].major, 259);
+        assert_eq!(blks[7].name, "blkext");
+    }
+
+    #[test]
+    fn test_devices_without_block() {
+        use crate::FromBufRead;
+        use std::io::Cursor;
+
+        let s = "Character devices:
+  1 mem
+  4 /dev/vc/0
+  4 tty
+  4 ttyS
+  5 /dev/tty
+  5 /dev/console
+  5 /dev/ptmx
+  7 vcs
+ 10 misc
+ 13 input
+ 29 fb
+ 90 mtd
+136 pts
+180 usb
+188 ttyUSB
+189 usb_device
+";
+
+        let cursor = Cursor::new(s);
+        let devices = Devices::from_buf_read(cursor).unwrap();
+        let (chrs, blks) = (devices.char_devices, devices.block_devices);
+
+        assert_eq!(chrs.len(), 16);
+
+        assert_eq!(chrs[1].major, 4);
+        assert_eq!(chrs[1].name, "/dev/vc/0");
+
+        assert_eq!(chrs[8].major, 10);
+        assert_eq!(chrs[8].name, "misc");
+
+        assert_eq!(chrs[15].major, 189);
+        assert_eq!(chrs[15].name, "usb_device");
+
+        assert_eq!(blks.len(), 0);
+    }
+}
