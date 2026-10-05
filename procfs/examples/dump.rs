@@ -7,3 +7,12 @@ fn main() {
     let prc = if let Some(pid) = pid {
         println!("Info for pid={}", pid);
         procfs::process::Process::new(pid).unwrap()
+    } else {
+        procfs::process::Process::myself().unwrap()
+    };
+    println!("{:#?}", prc);
+
+    let stat = prc.stat().unwrap();
+    println!("State: {:?}", stat.state());
+    println!("RSS:   {} bytes", stat.rss_bytes().get());
+}
