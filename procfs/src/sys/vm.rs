@@ -68,3 +68,74 @@ impl fmt::Display for DropCache {
     }
 }
 
+impl str::FromStr for DropCache {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse().map_err(|_| "Fail to parse drop cache").and_then(|n| match n {
+            0 => Ok(DropCache::Default),
+            1 => Ok(DropCache::PageCache),
+            2 => Ok(DropCache::Inodes),
+            3 => Ok(DropCache::All),
+            4 => Ok(DropCache::Disable),
+            _ => Err("Unknown drop cache value"),
+        })
+    }
+}
+
+/// Causes the kernel to drop clean caches, dentries, and inodes from memory,
+/// causing that memory to become free.
+///
+/// This can be useful for memory management testing and performing reproducible filesystem benchmarks.
+/// Because writing to this file causes the benefits of caching to be lost,
+/// it can degrade overall system performance.
+pub fn drop_caches(drop: DropCache) -> ProcResult<()> {
+    write_value("/proc/sys/vm/drop_caches", drop)
+}
+
+/// The maximum number of memory map areas a process may have.
+///
+/// Memory map areas are used as a side-effect of calling malloc,
+/// directly by mmap, mprotect, and madvise, and also when loading shared libraries.
+///
+/// # Example
+///
+/// ```
+/// use procfs::sys::vm::max_map_count;
+///
+/// assert_ne!(max_map_count().unwrap(), 0);
+/// ```
+pub fn max_map_count() -> ProcResult<u64> {
+    read_value("/proc/sys/vm/max_map_count")
+}
+
+/// Set the maximum number of memory map areas a process may have.
+///
+/// Memory map areas are used as a side-effect of calling malloc,
+/// directly by mmap, mprotect, and madvise, and also when loading shared libraries.
+pub fn set_max_map_count(count: u64) -> ProcResult<()> {
+    write_value("/proc/sys/vm/max_map_count", count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test() {
+        use std::path::Path;
+        if Path::new("/proc/sys/vm/admin_reserve_kbytes").exists() {
+            admin_reserve_kbytes().unwrap();
+        }
+        if Path::new("/proc/sys/vm/max_map_count").exists() {
+            max_map_count().unwrap();
+        }
+
+        for v in 0..5 {
+            let s = format!("{}", v);
+            let dc = DropCache::from_str(&s).unwrap();
+            assert_eq!(format!("{}", dc), s);
+        }
+    }
+}
