@@ -48,3 +48,54 @@ fn main() {
     println!("Virtual address of `variable`: {:p}", ptr);
 
     for memory_map in mem_map {
+        let mem_start = memory_map.address.0;
+        let mem_end = memory_map.address.1;
+
+        if (ptr as u64) < mem_start || (ptr as u64) >= mem_end {
+            // pointer is not in this memory mapping
+            continue;
+        }
+
+        // found the memory mapping where the value is stored
+        println!("Found memory mapping\n{:?}", memory_map);
+
+        // memory is split into pages (usually 4 kiB)
+        let index_start = (mem_start / page_size) as usize;
+        let index_end = (mem_end / page_size) as usize;
+
+        for index in index_start..index_end {
+            // we search for the exact page inside the memory mapping
+            let virt_mem = index * page_size as usize;
+
+            // ptr must be reside between this page and the next one
+            if (ptr as usize) < virt_mem || (ptr as usize) >= virt_mem + page_size as usize {
+                continue;
+            }
+
+            // we found the exact page where the value resides
+            let page_info = pagemap.get_info(index).unwrap();
+            match page_info {
+                procfs::process::PageInfo::MemoryPage(memory_page) => {
+                    let pfn = memory_page.get_page_frame_number();
+                    let phys_addr = pfn.0 * page_size;
+
+                    let physical_page_info = kpageflags.get_info(pfn).expect("Can't get kpageflags info");
+
+                    println!(
+                        "Found page\nvirt_mem: 0x{:x}, pfn: 0x{:x}, phys_addr: 0x{:x}, flags: {:?}",
+                        virt_mem, pfn, phys_addr, physical_page_info
+                    );
+                }
+                procfs::process::PageInfo::SwapPage(swap_page_flags) => {
+                    let swap_type = swap_page_flags.get_swap_type();
+                    let swap_offset = swap_page_flags.get_swap_offset();
+
+                    println!(
+                        "Found page\nvirt_mem: 0x{:x}, swap_type: {:}, swap_offset: 0x{:x}, flags: {:?}",
+                        virt_mem, swap_type, swap_offset, swap_page_flags
+                    );
+                }
+            }
+        }
+    }
+}
