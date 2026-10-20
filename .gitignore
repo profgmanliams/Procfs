@@ -1,1 +1,6 @@
 /target
+**/*.rs.bk
+Cargo.lock
+
+.idea/
+lcov.info
