@@ -32,3 +32,37 @@ fn main() {
         if let Some(pid) = lock.pid {
             if let Ok(fds) = Process::new(pid).and_then(|p| p.fd()) {
                 for f in fds {
+                    let fd = f.unwrap();
+                    if let FDTarget::Path(p) = fd.target {
+                        if let Ok(stat) = rustix::fs::statat(&rustix::fs::CWD, &p, AtFlags::empty()) {
+                            if stat.st_ino as u64 == lock.inode {
+                                print!("{}", p.display());
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !found {
+            // we don't have a PID or we don't have permission to inspect the processes files, but we still have the device and inode
+            // There's no way to look up a path from an inode, so just bring the device mount point
+            for mount in &mountinfo {
+                if format!("{}:{}", lock.devmaj, lock.devmin) == mount.majmin {
+                    print!("{}...", mount.mount_point.display());
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if !found {
+            // still not found? print the device
+            print!("{}:{}", lock.devmaj, lock.devmin);
+        }
+
+        println!();
+    }
+}
