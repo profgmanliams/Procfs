@@ -368,3 +368,373 @@ fn test_proc_fd_count_runsinglethread() {
     let after_closing = myself.fd_count().unwrap();
 
     assert_eq!(before, after_closing);
+}
+
+#[test]
+fn test_proc_fd() {
+    let myself = Process::myself().unwrap();
+    let raw_fd = myself.fd().unwrap().next().unwrap().unwrap().fd as i32;
+    let fd = FDInfo::from_raw_fd(myself.pid, raw_fd).unwrap();
+    println!("{:?} {:?}", fd, fd.mode());
+}
+
+#[test]
+fn test_proc_coredump() {
+    let myself = Process::myself().unwrap();
+    let flags = myself.coredump_filter();
+    println!("{:?}", flags);
+}
+
+#[test]
+fn test_proc_auxv() {
+    let myself = Process::myself().unwrap();
+    let auxv = myself.auxv().unwrap();
+    println!("{:?}", auxv);
+    for (k, v) in auxv {
+        // See bits/auxv.h
+        match k {
+            2 => println!("File descriptor of program: {}", v),
+            3 => println!("Address of the program headers of the executable: 0x{:x}", v),
+            4 => println!("Size of program header entry: {}", v),
+            5 => println!("Number of program headers: {}", v),
+            6 => {
+                println!("System page size: {}", v);
+                assert!(v > 0);
+            }
+            7 => {
+                println!("Base address: 0x{:x}", v);
+                assert!(v > 0);
+            }
+            8 => println!("Flags: 0x{:x}", v),
+            9 => {
+                println!("Entry address of the executable: 0x{:x}", v);
+                assert!(v > 0);
+            }
+            11 => {
+                println!("Real UID: {}", v);
+                assert_eq!(v as u32, rustix::process::getuid().as_raw());
+            }
+            12 => {
+                println!("Effective UID: {}", v);
+                assert!(v > 0);
+            }
+            13 => {
+                println!("Real GID: {}", v);
+                assert!(v > 0);
+            }
+            14 => {
+                println!("Effective GID: {}", v);
+                assert!(v > 0);
+            }
+            15 => {
+                println!("Platform string address: 0x{:x}", v);
+                let platform = unsafe { std::ffi::CStr::from_ptr(v as *const _) };
+                println!("Platform string: {:?}", platform);
+            }
+            16 => println!("HW Cap: 0x{:x}", v),
+            17 => {
+                println!("Clock ticks per second: {}", v);
+                assert_eq!(v, crate::ticks_per_second());
+            }
+            19 => println!("Data cache block size: {}", v),
+            23 => println!("Run as setuid?: {}", v),
+            25 => println!("Address of 16 random bytes: 0x{:x}", v),
+            26 => println!("HW Cap2: 0x{:x}", v),
+            31 => {
+                println!("argv[0] address: 0x{:x}", v);
+                let argv0 = unsafe { std::ffi::CStr::from_ptr(v as *const _) };
+                println!("argv[0]: {:?}", argv0);
+            }
+            33 => {
+                println!("Base addr of vDSO: 0x{:x}", v);
+                // confirm that this base addr from the aux vector matches what our maps file says:
+                let maps = myself.maps().unwrap();
+                let vsdo = maps
+                    .iter()
+                    .find(|map| map.pathname == MMapPath::Vdso)
+                    .expect("Failed to find mapping for the vdso");
+                assert_eq!(vsdo.address.0, v);
+            }
+            k => println!("Unknown key {}: {:x}", k, v),
+        }
+        if k != 16 {
+            // for reasons i do not understand, getauxval(AT_HWCAP) doesn't return the expected
+            // value
+            assert_eq!(v, unsafe { libc::getauxval(k.try_into().unwrap()).into() });
+        }
+    }
+}
+
+#[test]
+fn test_proc_wchan() {
+    let myself = Process::myself().unwrap();
+    let wchan = myself.wchan().unwrap();
+    println!("{:?}", wchan);
+}
+
+#[test]
+fn test_proc_loginuid() {
+    if !Path::new("/proc/self/loginuid").exists() {
+        return;
+    }
+
+    let myself = Process::myself().unwrap();
+    let loginuid = myself.loginuid().unwrap();
+    println!("{:?}", loginuid);
+}
+
+#[test]
+fn test_nopanic() {
+    fn inner() -> ProcResult<u8> {
+        let a = vec!["xyz"];
+        from_iter(a)
+    }
+    assert!(inner().is_err());
+}
+
+#[test]
+fn test_procinfo() {
+    // test to see that this crate and procinfo give mostly the same results
+
+    fn diff_mem(a: f32, b: f32) {
+        let diff = (a - b).abs();
+        assert!(diff < 20000.0, "diff:{}", diff);
+    }
+
+    // take a pause to let things "settle" before getting data.  By default, cargo will run
+    // tests in parallel, which can cause disturbences
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    let procinfo_stat = procinfo::pid::stat_self().unwrap();
+    let me = Process::myself().unwrap();
+    let me_stat = me.stat().unwrap();
+
+    diff_mem(procinfo_stat.vsize as f32, me_stat.vsize as f32);
+
+    assert_eq!(me_stat.priority, procinfo_stat.priority as i64);
+    assert_eq!(me_stat.nice, procinfo_stat.nice as i64);
+    // flags seem to change during runtime, with PF_FREEZER_SKIP coming and going...
+    //assert_eq!(me_stat.flags, procinfo_stat.flags, "procfs:{:?} procinfo:{:?}", crate::StatFlags::from_bits(me_stat.flags), crate::StatFlags::from_bits(procinfo_stat.flags));
+    assert_eq!(me_stat.pid, procinfo_stat.pid);
+    assert_eq!(me_stat.ppid, procinfo_stat.ppid);
+}
+
+#[test]
+fn test_statm() {
+    let me = Process::myself().unwrap();
+    let statm = me.statm().unwrap();
+    println!("{:#?}", statm);
+}
+
+#[test]
+fn test_schedstat() {
+    let me = Process::myself().unwrap();
+    let schedstat = me.schedstat().unwrap();
+    println!("{:#?}", schedstat);
+}
+
+#[test]
+fn test_fdtarget() {
+    // https://github.com/eminence/procfs/issues/352
+    let x = FDTarget::from_str("onload:[udp:1:2032]").unwrap();
+    assert!(matches!(x, FDTarget::Unknown(..)));
+
+    // none of these below values are valid, but were found by a fuzzer to crash procfs.  this
+    // test ensures that the crashes have been fixed
+
+    let _ = FDTarget::from_str(":");
+    let _ = FDTarget::from_str("n:ǟF");
+    let _ = FDTarget::from_str("pipe:");
+}
+
+#[test]
+fn test_fdtarget_memfd() {
+    let memfd = FDTarget::from_str("/memfd:test").unwrap();
+    assert!(matches!(memfd, FDTarget::MemFD(s) if s == "test"));
+}
+
+#[test]
+fn test_network_stuff() {
+    let myself = Process::myself().unwrap();
+    let _tcp = myself.tcp().unwrap();
+    let _tcp6 = myself.tcp().unwrap();
+    let _udp = myself.udp().unwrap();
+    let _udp6 = myself.udp6().unwrap();
+    let _arp = myself.arp().unwrap();
+    let _route = myself.route().unwrap();
+    let _dev = myself.dev_status().unwrap();
+    let _unix = myself.unix().unwrap();
+}
+
+trait LimitValueAsLimit {
+    fn as_limit(&self) -> Option<u64>;
+}
+
+impl LimitValueAsLimit for LimitValue {
+    fn as_limit(&self) -> Option<u64> {
+        match self {
+            LimitValue::Unlimited => None,
+            LimitValue::Value(v) => Some(*v),
+        }
+    }
+}
+
+#[test]
+fn test_limits() {
+    let me = process::Process::myself().unwrap();
+    let limits = me.limits().unwrap();
+    println!("{:#?}", limits);
+
+    // Max cpu time
+    let lim = rustix::process::getrlimit(Resource::Cpu);
+    assert_eq!(lim.current, limits.max_cpu_time.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_cpu_time.hard_limit.as_limit());
+
+    // Max file size
+    let lim = rustix::process::getrlimit(Resource::Fsize);
+    assert_eq!(lim.current, limits.max_file_size.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_file_size.hard_limit.as_limit());
+
+    // Max data size
+    let lim = rustix::process::getrlimit(Resource::Data);
+    assert_eq!(lim.current, limits.max_data_size.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_data_size.hard_limit.as_limit());
+
+    // Max stack size
+    let lim = rustix::process::getrlimit(Resource::Stack);
+    assert_eq!(lim.current, limits.max_stack_size.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_stack_size.hard_limit.as_limit());
+
+    // Max core file size
+    let lim = rustix::process::getrlimit(Resource::Core);
+    assert_eq!(lim.current, limits.max_core_file_size.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_core_file_size.hard_limit.as_limit());
+
+    // Max resident set
+    let lim = rustix::process::getrlimit(Resource::Rss);
+    assert_eq!(lim.current, limits.max_resident_set.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_resident_set.hard_limit.as_limit());
+
+    // Max processes
+    let lim = rustix::process::getrlimit(Resource::Nproc);
+    assert_eq!(lim.current, limits.max_processes.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_processes.hard_limit.as_limit());
+
+    // Max open files
+    let lim = rustix::process::getrlimit(Resource::Nofile);
+    assert_eq!(lim.current, limits.max_open_files.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_open_files.hard_limit.as_limit());
+
+    // Max locked memory
+    let lim = rustix::process::getrlimit(Resource::Memlock);
+    assert_eq!(lim.current, limits.max_locked_memory.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_locked_memory.hard_limit.as_limit());
+
+    // Max address space
+    let lim = rustix::process::getrlimit(Resource::As);
+    assert_eq!(lim.current, limits.max_address_space.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_address_space.hard_limit.as_limit());
+
+    // Max file locks
+    let lim = rustix::process::getrlimit(Resource::Locks);
+    assert_eq!(lim.current, limits.max_file_locks.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_file_locks.hard_limit.as_limit());
+
+    // Max pending signals
+    let lim = rustix::process::getrlimit(Resource::Sigpending);
+    assert_eq!(lim.current, limits.max_pending_signals.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_pending_signals.hard_limit.as_limit());
+
+    // Max msgqueue size
+    let lim = rustix::process::getrlimit(Resource::Msgqueue);
+    assert_eq!(lim.current, limits.max_msgqueue_size.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_msgqueue_size.hard_limit.as_limit());
+
+    // Max nice priority
+    let lim = rustix::process::getrlimit(Resource::Nice);
+    assert_eq!(lim.current, limits.max_nice_priority.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_nice_priority.hard_limit.as_limit());
+
+    // Max realtime priority
+    let lim = rustix::process::getrlimit(Resource::Rtprio);
+    assert_eq!(lim.current, limits.max_realtime_priority.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_realtime_priority.hard_limit.as_limit());
+
+    // Max realtime timeout
+    let lim = rustix::process::getrlimit(Resource::Rttime);
+    assert_eq!(lim.current, limits.max_realtime_timeout.soft_limit.as_limit());
+    assert_eq!(lim.maximum, limits.max_realtime_timeout.hard_limit.as_limit());
+}
+
+#[test]
+fn test_mountinfo_live() {
+    let me = Process::myself().unwrap();
+    let MountInfos(mounts) = me.mountinfo().unwrap();
+    println!("{:#?}", mounts);
+}
+
+#[test]
+fn test_proc_mountstats_live() {
+    // this tries to parse a live mountstats file
+    // there are no assertions, but we still want to check for parsing errors (which can
+    // cause panics)
+
+    let MountStats(stats) = FromRead::from_file("/proc/self/mountstats").unwrap();
+    for stat in stats {
+        println!("{:#?}", stat);
+        if let Some(nfs) = stat.statistics {
+            println!("  {:?}", nfs.server_caps().unwrap());
+        }
+    }
+}
+
+#[test]
+fn test_proc_status() {
+    let myself = Process::myself().unwrap();
+    let stat = myself.stat().unwrap();
+    let status = myself.status().unwrap();
+    println!("{:?}", status);
+
+    assert_eq!(status.name, stat.comm);
+    assert_eq!(status.pid, stat.pid);
+    assert_eq!(status.ppid, stat.ppid);
+}
+
+#[test]
+fn test_proc_status_for_kthreadd() {
+    // when running in a container, pid2 probably isn't kthreadd, so check
+    let kthreadd = match process::Process::new(2) {
+        Ok(p) => p,
+        Err(ProcError::NotFound(_)) => {
+            return; // ok we can ignore
+        }
+        Err(e) => {
+            panic!("{}", e);
+        }
+    };
+    let status = kthreadd.status().unwrap();
+    println!("{:?}", status);
+
+    // actually check that pid2 is kthreadd
+    if status.name != "kthreadd" {
+        return; // ok we can still ignore
+    }
+
+    assert_eq!(status.pid, 2);
+    assert_eq!(status.vmpeak, None);
+    assert_eq!(status.vmsize, None);
+    assert_eq!(status.vmlck, None);
+    assert_eq!(status.vmpin, None);
+    assert_eq!(status.vmhwm, None);
+    assert_eq!(status.vmrss, None);
+    assert_eq!(status.rssanon, None);
+    assert_eq!(status.rssfile, None);
+    assert_eq!(status.rssshmem, None);
+    assert_eq!(status.vmdata, None);
+    assert_eq!(status.vmstk, None);
+    assert_eq!(status.vmexe, None);
+    assert_eq!(status.vmlib, None);
+    assert_eq!(status.vmpte, None);
+    assert_eq!(status.vmswap, None);
+    assert_eq!(status.hugetlbpages, None);
+}
