@@ -30,3 +30,36 @@ impl Process {
             let path = self.root.join("ns").join(entry.file_name().to_string_lossy().as_ref());
             let ns_type = OsString::from(entry.file_name().to_string_lossy().as_ref());
             let stat = rustix::fs::statat(&dir_ns, entry.file_name(), AtFlags::empty())
+                .map_err(|_| build_internal_error!(format!("Unable to stat {:?}", path)))?;
+
+            if let Some(n) = namespaces.insert(
+                ns_type.clone(),
+                Namespace {
+                    ns_type,
+                    path,
+                    identifier: stat.st_ino,
+                    device_id: stat.st_dev,
+                },
+            ) {
+                return Err(build_internal_error!(format!(
+                    "NsType appears more than once {:?}",
+                    n.ns_type
+                )));
+            }
+        }
+
+        Ok(Namespaces(namespaces))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::process::Process;
+
+    #[test]
+    fn test_namespaces() {
+        let myself = Process::myself().unwrap();
+        let namespaces = myself.namespaces().unwrap();
+        print!("{:?}", namespaces);
+    }
+}
