@@ -424,3 +424,429 @@ pub struct Io {
     /// Cancelled write bytes.
     ///
     /// The  big inaccuracy here is truncate.  If a process writes 1MB to a file and then deletes
+    /// the file, it will in fact perform no write‐ out.  But it will have been accounted as having
+    /// caused 1MB of write.  In other words: this field represents the number of bytes which this
+    /// process caused to not happen, by truncating pagecache.  A task can cause "negative" I/O too.
+    /// If this task truncates some dirty pagecache, some I/O which another task has been accounted
+    /// for (in its write_bytes) will not be happening.
+    pub cancelled_write_bytes: u64,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub enum MMapPath {
+    /// The file that is backing the mapping.
+    Path(PathBuf),
+    /// The process's heap.
+    Heap,
+    /// The initial process's (also known as the main thread's) stack.
+    Stack,
+    /// A thread's stack (where the `<tid>` is a thread ID).  It corresponds to the
+    /// `/proc/<pid>/task/<tid>/` path.
+    ///
+    /// (since Linux 3.4)
+    TStack(u32),
+    /// The virtual dynamically linked shared object.
+    Vdso,
+    /// Shared kernel variables
+    Vvar,
+    /// obsolete virtual syscalls, succeeded by vdso
+    Vsyscall,
+    /// rollup memory mappings, from `/proc/<pid>/smaps_rollup`
+    Rollup,
+    /// An anonymous mapping as obtained via mmap(2).
+    Anonymous,
+    /// Shared memory segment. The i32 value corresponds to [Shm.key](Shm::key), while [MemoryMap.inode](MemoryMap::inode) corresponds to [Shm.shmid](Shm::shmid)
+    Vsys(i32),
+    /// Some other pseudo-path
+    Other(String),
+}
+
+impl MMapPath {
+    pub fn from(path: &str) -> ProcResult<MMapPath> {
+        Ok(match path.trim() {
+            "" => MMapPath::Anonymous,
+            "[heap]" => MMapPath::Heap,
+            "[stack]" => MMapPath::Stack,
+            "[vdso]" => MMapPath::Vdso,
+            "[vvar]" => MMapPath::Vvar,
+            "[vsyscall]" => MMapPath::Vsyscall,
+            "[rollup]" => MMapPath::Rollup,
+            x if x.starts_with("[stack:") => {
+                let mut s = x[1..x.len() - 1].split(':');
+                let tid = from_str!(u32, expect!(s.nth(1)));
+                MMapPath::TStack(tid)
+            }
+            x if x.starts_with('[') && x.ends_with(']') => MMapPath::Other(x[1..x.len() - 1].to_string()),
+            x if x.starts_with("/SYSV") => MMapPath::Vsys(u32::from_str_radix(&x[5..13], 16)? as i32), // 32bits signed hex. /SYSVaabbccdd (deleted)
+            x => MMapPath::Path(PathBuf::from(x)),
+        })
+    }
+}
+
+/// Represents all entries in a `/proc/<pid>/maps` or `/proc/<pid>/smaps` file.
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+#[non_exhaustive]
+pub struct MemoryMaps(pub Vec<MemoryMap>);
+
+impl crate::FromBufRead for MemoryMaps {
+    /// The data should be formatted according to procfs /proc/pid/{maps,smaps,smaps_rollup}.
+    fn from_buf_read<R: BufRead>(mut reader: R) -> ProcResult<Self> {
+        let mut memory_maps = Vec::with_capacity(10);
+        let mut current_memory_map: Option<MemoryMap> = None;
+        let mut line = String::with_capacity(100);
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                // End of file.
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => return Err(ProcError::Incomplete(None)),
+            }
+
+            if line.is_empty() {
+                break;
+            }
+
+            // Assumes all extension fields (in `/proc/<pid>/smaps`) start with a capital letter,
+            // which seems to be the case.
+            if line.starts_with(|c: char| c.is_ascii_uppercase()) {
+                match current_memory_map.as_mut() {
+                    None => return Err(ProcError::Incomplete(None)),
+                    Some(mm) => {
+                        // This is probably an attribute
+                        if line.starts_with("VmFlags") {
+                            let flags = line.split_ascii_whitespace();
+                            let flags = flags.skip(1); // Skips the `VmFlags:` part since we don't need it.
+
+                            let flags = flags
+                                .map(VmFlags::from_str)
+                                // FUTURE: use `Iterator::reduce`
+                                .fold(VmFlags::NONE, std::ops::BitOr::bitor);
+
+                            mm.extension.vm_flags = flags;
+                        } else {
+                            let mut parts = line.split_ascii_whitespace();
+
+                            let key = parts.next();
+                            let value = parts.next();
+
+                            if let (Some(k), Some(v)) = (key, value) {
+                                // While most entries do have one, not all of them do.
+                                let size_suffix = parts.next();
+
+                                // Limited poking at /proc/<pid>/smaps and then checking if "MB", "GB", and "TB" appear in the C file that is
+                                // supposedly responsible for creating smaps, has lead me to believe that the only size suffixes we'll ever encounter
+                                // "kB", which is most likely kibibytes. Actually checking if the size suffix is any of the above is a way to
+                                // future-proof the code, but I am not sure it is worth doing so.
+                                let size_multiplier = if size_suffix.is_some() { 1024 } else { 1 };
+
+                                let v = v.parse::<u64>().map_err(|_| {
+                                    ProcError::Other("Value in `Key: Value` pair was not actually a number".into())
+                                })?;
+
+                                // This ignores the case when our Key: Value pairs are really Key Value pairs. Is this a good idea?
+                                let k = k.trim_end_matches(':');
+
+                                mm.extension.map.insert(k.into(), v * size_multiplier);
+                            }
+                        }
+                    }
+                }
+            } else {
+                if let Some(mm) = current_memory_map.take() {
+                    memory_maps.push(mm);
+                }
+                current_memory_map = Some(MemoryMap::from_line(&line)?);
+            }
+        }
+        if let Some(mm) = current_memory_map.take() {
+            memory_maps.push(mm);
+        }
+
+        Ok(MemoryMaps(memory_maps))
+    }
+}
+
+impl MemoryMaps {
+    /// Return an iterator over [MemoryMap].
+    pub fn iter(&self) -> std::slice::Iter<MemoryMap> {
+        self.0.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'a> IntoIterator for &'a MemoryMaps {
+    type IntoIter = std::slice::Iter<'a, MemoryMap>;
+    type Item = &'a MemoryMap;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl IntoIterator for MemoryMaps {
+    type IntoIter = std::vec::IntoIter<MemoryMap>;
+    type Item = MemoryMap;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+/// Represents an entry in a `/proc/<pid>/maps` or `/proc/<pid>/smaps` file.
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct MemoryMap {
+    /// The address space in the process that the mapping occupies.
+    pub address: (u64, u64),
+    pub perms: MMPermissions,
+    /// The offset into the file/whatever
+    pub offset: u64,
+    /// The device (major, minor)
+    pub dev: (i32, i32),
+    /// The inode on that device
+    ///
+    /// 0 indicates that no inode is associated with the memory region, as would be the case with
+    /// BSS (uninitialized data).
+    pub inode: u64,
+    pub pathname: MMapPath,
+    /// Memory mapping extension information, populated when parsing `/proc/<pid>/smaps`.
+    ///
+    /// The members will be `Default::default()` (empty/none) when the information isn't available.
+    pub extension: MMapExtension,
+}
+
+impl MemoryMap {
+    fn from_line(line: &str) -> ProcResult<MemoryMap> {
+        let mut s = line.splitn(6, ' ');
+        let address = expect!(s.next());
+        let perms = expect!(s.next());
+        let offset = expect!(s.next());
+        let dev = expect!(s.next());
+        let inode = expect!(s.next());
+        let path = expect!(s.next());
+
+        Ok(MemoryMap {
+            address: split_into_num(address, '-', 16)?,
+            perms: perms.parse()?,
+            offset: from_str!(u64, offset, 16),
+            dev: split_into_num(dev, ':', 16)?,
+            inode: from_str!(u64, inode),
+            pathname: MMapPath::from(path)?,
+            extension: Default::default(),
+        })
+    }
+}
+
+/// Represents the information about a specific mapping as presented in /proc/\<pid\>/smaps
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct MMapExtension {
+    /// Key-value pairs that may represent statistics about memory usage, or other interesting things,
+    /// such a "ProtectionKey" (if you're on X86 and that kernel config option was specified).
+    ///
+    /// Note that should a key-value pair represent a memory usage statistic, it will be in bytes.
+    ///
+    /// Check your manpage for more information
+    pub map: HashMap<String, u64>,
+    /// Kernel flags associated with the virtual memory area
+    ///
+    /// (since Linux 3.8)
+    pub vm_flags: VmFlags,
+}
+
+impl MMapExtension {
+    /// Return whether the extension information is empty.
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty() && self.vm_flags == VmFlags::NONE
+    }
+}
+
+impl crate::FromBufRead for Io {
+    fn from_buf_read<R: BufRead>(reader: R) -> ProcResult<Self> {
+        let mut map = HashMap::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.is_empty() || !line.contains(' ') {
+                continue;
+            }
+            let mut s = line.split_whitespace();
+            let field = expect!(s.next());
+            let value = expect!(s.next());
+
+            let value = from_str!(u64, value);
+
+            map.insert(field[..field.len() - 1].to_string(), value);
+        }
+        let io = Io {
+            rchar: expect!(map.remove("rchar")),
+            wchar: expect!(map.remove("wchar")),
+            syscr: expect!(map.remove("syscr")),
+            syscw: expect!(map.remove("syscw")),
+            read_bytes: expect!(map.remove("read_bytes")),
+            write_bytes: expect!(map.remove("write_bytes")),
+            cancelled_write_bytes: expect!(map.remove("cancelled_write_bytes")),
+        };
+
+        assert!(!cfg!(test) || map.is_empty(), "io map is not empty: {:#?}", map);
+
+        Ok(io)
+    }
+}
+
+/// Describes a file descriptor opened by a process.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub enum FDTarget {
+    /// A file or device
+    Path(PathBuf),
+    /// A socket type, with an inode
+    Socket(u64),
+    Net(u64),
+    Pipe(u64),
+    /// A file descriptor that have no corresponding inode.
+    AnonInode(String),
+    /// A memfd file descriptor with a name.
+    MemFD(String),
+    /// Some other file descriptor type, with an inode.
+    Other(String, u64),
+    /// Some unknown file descriptor type, with some extra data
+    Unknown(String, String),
+}
+
+impl FromStr for FDTarget {
+    type Err = ProcError;
+    fn from_str(s: &str) -> Result<FDTarget, ProcError> {
+        // helper function that removes the first and last character
+        fn strip_first_last(s: &str) -> ProcResult<&str> {
+            if s.len() > 2 {
+                let mut c = s.chars();
+                // remove the first and last characters
+                let _ = c.next();
+                let _ = c.next_back();
+                Ok(c.as_str())
+            } else {
+                Err(ProcError::Incomplete(None))
+            }
+        }
+
+        if !s.starts_with('/') && s.contains(':') {
+            let mut s = s.splitn(2, ':');
+            let fd_type = expect!(s.next());
+            match fd_type {
+                "socket" => {
+                    let inode = expect!(s.next(), "socket inode");
+                    let inode = expect!(u64::from_str_radix(strip_first_last(inode)?, 10));
+                    Ok(FDTarget::Socket(inode))
+                }
+                "net" => {
+                    let inode = expect!(s.next(), "net inode");
+                    let inode = expect!(u64::from_str_radix(strip_first_last(inode)?, 10));
+                    Ok(FDTarget::Net(inode))
+                }
+                "pipe" => {
+                    let inode = expect!(s.next(), "pipe inode");
+                    let inode = expect!(u64::from_str_radix(strip_first_last(inode)?, 10));
+                    Ok(FDTarget::Pipe(inode))
+                }
+                "anon_inode" => Ok(FDTarget::AnonInode(expect!(s.next(), "anon inode").to_string())),
+                "" => Err(ProcError::Incomplete(None)),
+                x => {
+                    let inode = expect!(s.next(), "other inode");
+                    // this may or may not be an actual inode.  if it starts and ends with brackets and has a number inside, the assume it is.
+                    // otherwise, this is some "Unknown" FD type
+                    if inode.starts_with('[') && inode.ends_with(']') {
+                        if let Ok(inode) = u64::from_str_radix(strip_first_last(inode)?, 10) {
+                            return Ok(FDTarget::Other(x.to_string(), inode));
+                        }
+                    }
+                    Ok(FDTarget::Unknown(x.to_string(), inode.to_string()))
+                }
+            }
+        } else if let Some(s) = s.strip_prefix("/memfd:") {
+            Ok(FDTarget::MemFD(s.to_string()))
+        } else {
+            Ok(FDTarget::Path(PathBuf::from(s)))
+        }
+    }
+}
+
+/// Provides information about memory usage, measured in pages.
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct StatM {
+    /// Total program size, measured in pages
+    ///
+    /// (same as VmSize in /proc/\<pid\>/status)
+    pub size: u64,
+    /// Resident set size, measured in pages
+    ///
+    /// (same as VmRSS in /proc/\<pid\>/status)
+    pub resident: u64,
+    /// number of resident shared pages (i.e., backed by a file)
+    ///
+    /// (same as RssFile+RssShmem in /proc/\<pid\>/status)
+    pub shared: u64,
+    /// Text (code)
+    pub text: u64,
+    /// library (unused since Linux 2.6; always 0)
+    pub lib: u64,
+    /// data + stack
+    pub data: u64,
+    /// dirty pages (unused since Linux 2.6; always 0)
+    pub dt: u64,
+}
+
+impl crate::FromRead for StatM {
+    fn from_read<R: Read>(mut r: R) -> ProcResult<Self> {
+        let mut line = String::new();
+        r.read_to_string(&mut line)?;
+        let mut s = line.split_whitespace();
+
+        let size = expect!(from_iter(&mut s));
+        let resident = expect!(from_iter(&mut s));
+        let shared = expect!(from_iter(&mut s));
+        let text = expect!(from_iter(&mut s));
+        let lib = expect!(from_iter(&mut s));
+        let data = expect!(from_iter(&mut s));
+        let dt = expect!(from_iter(&mut s));
+
+        if cfg!(test) {
+            assert!(s.next().is_none());
+        }
+
+        Ok(StatM {
+            size,
+            resident,
+            shared,
+            text,
+            lib,
+            data,
+            dt,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_memory_map_permissions() {
+        use MMPermissions as P;
+        assert_eq!("rw-p".parse(), Ok(P::READ | P::WRITE | P::PRIVATE));
+        assert_eq!("r-xs".parse(), Ok(P::READ | P::EXECUTE | P::SHARED));
+        assert_eq!("----".parse(), Ok(P::NONE));
+
+        assert_eq!((P::READ | P::WRITE | P::PRIVATE).as_str(), "rw-p");
+        assert_eq!((P::READ | P::EXECUTE | P::SHARED).as_str(), "r-xs");
+        assert_eq!(P::NONE.as_str(), "----");
+    }
+}
