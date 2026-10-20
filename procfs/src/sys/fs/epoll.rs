@@ -13,3 +13,18 @@ pub fn max_user_watches() -> ProcResult<u64> {
 
 /// Sets the limit on the total number of file descriptors that a user can register across all epoll instances.
 pub fn set_max_user_watches(val: u64) -> ProcResult<()> {
+    write_value("/proc/sys/fs/epoll/max_user_watches", val)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::KernelVersion;
+
+    #[test]
+    fn test_max_user_watches() {
+        if KernelVersion::current().unwrap() >= KernelVersion::new(2, 6, 28) {
+            println!("{}", max_user_watches().unwrap());
+        }
+    }
+}
