@@ -12,3 +12,17 @@ pub fn main() {
             }
         }
         println!("Type: {name}");
+        for block in entries {
+            println!("{:>14}: {}", "Name", block.name);
+            println!("{:>14}: {}", "Driver", block.driver);
+            println!("{:>14}: {}", "Module", block.module);
+            println!("{:>14}: {}", "Priority", block.priority);
+            println!("{:>14}: {}", "Ref Count", block.ref_count);
+            println!("{:>14}: {:?}", "Self Test", block.self_test);
+            println!("{:>14}: {}", "Internal", block.internal);
+            println!("{:>14}: {}", "fips enabled", block.fips_enabled);
+            println!("{:>14}: {:?}", "Type Details", block.crypto_type);
+            println!();
+        }
+    }
+}

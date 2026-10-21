@@ -168,3 +168,173 @@ pub struct Status {
     /// currently dumping core, which could result in a corrupted core dump file.
     ///
     /// (Since Linux 4.15)
+    pub core_dumping: Option<bool>,
+
+    /// Contains true if the process is allowed to use THP
+    ///
+    /// (Since Linux 5.0)
+    pub thp_enabled: Option<bool>,
+}
+
+impl crate::FromBufRead for Status {
+    fn from_buf_read<R: BufRead>(reader: R) -> ProcResult<Self> {
+        let mut map = HashMap::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.is_empty() {
+                continue;
+            }
+            let mut s = line.split(':');
+            let field = expect!(s.next());
+            let value = expect!(s.next()).trim();
+
+            map.insert(field.to_string(), value.to_string());
+        }
+
+        let status = Status {
+            name: expect!(map.remove("Name")),
+            umask: map.remove("Umask").map(|x| Ok(from_str!(u32, &x, 8))).transpose()?,
+            state: expect!(map.remove("State")),
+            tgid: from_str!(i32, &expect!(map.remove("Tgid"))),
+            ngid: map.remove("Ngid").map(|x| Ok(from_str!(i32, &x))).transpose()?,
+            pid: from_str!(i32, &expect!(map.remove("Pid"))),
+            ppid: from_str!(i32, &expect!(map.remove("PPid"))),
+            tracerpid: from_str!(i32, &expect!(map.remove("TracerPid"))),
+            ruid: expect!(Status::parse_uid_gid(expect!(map.get("Uid")), 0)),
+            euid: expect!(Status::parse_uid_gid(expect!(map.get("Uid")), 1)),
+            suid: expect!(Status::parse_uid_gid(expect!(map.get("Uid")), 2)),
+            fuid: expect!(Status::parse_uid_gid(&expect!(map.remove("Uid")), 3)),
+            rgid: expect!(Status::parse_uid_gid(expect!(map.get("Gid")), 0)),
+            egid: expect!(Status::parse_uid_gid(expect!(map.get("Gid")), 1)),
+            sgid: expect!(Status::parse_uid_gid(expect!(map.get("Gid")), 2)),
+            fgid: expect!(Status::parse_uid_gid(&expect!(map.remove("Gid")), 3)),
+            fdsize: from_str!(u32, &expect!(map.remove("FDSize"))),
+            groups: Status::parse_list(&expect!(map.remove("Groups")))?,
+            nstgid: map.remove("NStgid").map(|x| Status::parse_list(&x)).transpose()?,
+            nspid: map.remove("NSpid").map(|x| Status::parse_list(&x)).transpose()?,
+            nspgid: map.remove("NSpgid").map(|x| Status::parse_list(&x)).transpose()?,
+            nssid: map.remove("NSsid").map(|x| Status::parse_list(&x)).transpose()?,
+            vmpeak: Status::parse_with_kb(map.remove("VmPeak"))?,
+            vmsize: Status::parse_with_kb(map.remove("VmSize"))?,
+            vmlck: Status::parse_with_kb(map.remove("VmLck"))?,
+            vmpin: Status::parse_with_kb(map.remove("VmPin"))?,
+            vmhwm: Status::parse_with_kb(map.remove("VmHWM"))?,
+            vmrss: Status::parse_with_kb(map.remove("VmRSS"))?,
+            rssanon: Status::parse_with_kb(map.remove("RssAnon"))?,
+            rssfile: Status::parse_with_kb(map.remove("RssFile"))?,
+            rssshmem: Status::parse_with_kb(map.remove("RssShmem"))?,
+            vmdata: Status::parse_with_kb(map.remove("VmData"))?,
+            vmstk: Status::parse_with_kb(map.remove("VmStk"))?,
+            vmexe: Status::parse_with_kb(map.remove("VmExe"))?,
+            vmlib: Status::parse_with_kb(map.remove("VmLib"))?,
+            vmpte: Status::parse_with_kb(map.remove("VmPTE"))?,
+            vmswap: Status::parse_with_kb(map.remove("VmSwap"))?,
+            hugetlbpages: Status::parse_with_kb(map.remove("HugetlbPages"))?,
+            threads: from_str!(u64, &expect!(map.remove("Threads"))),
+            sigq: expect!(Status::parse_sigq(&expect!(map.remove("SigQ")))),
+            sigpnd: from_str!(u64, &expect!(map.remove("SigPnd")), 16),
+            shdpnd: from_str!(u64, &expect!(map.remove("ShdPnd")), 16),
+            sigblk: from_str!(u64, &expect!(map.remove("SigBlk")), 16),
+            sigign: from_str!(u64, &expect!(map.remove("SigIgn")), 16),
+            sigcgt: from_str!(u64, &expect!(map.remove("SigCgt")), 16),
+            capinh: from_str!(u64, &expect!(map.remove("CapInh")), 16),
+            capprm: from_str!(u64, &expect!(map.remove("CapPrm")), 16),
+            capeff: from_str!(u64, &expect!(map.remove("CapEff")), 16),
+            capbnd: map.remove("CapBnd").map(|x| Ok(from_str!(u64, &x, 16))).transpose()?,
+            capamb: map.remove("CapAmb").map(|x| Ok(from_str!(u64, &x, 16))).transpose()?,
+            nonewprivs: map.remove("NoNewPrivs").map(|x| Ok(from_str!(u64, &x))).transpose()?,
+            seccomp: map.remove("Seccomp").map(|x| Ok(from_str!(u32, &x))).transpose()?,
+            speculation_store_bypass: map.remove("Speculation_Store_Bypass"),
+            cpus_allowed: map
+                .remove("Cpus_allowed")
+                .map(|x| Status::parse_allowed(&x))
+                .transpose()?,
+            cpus_allowed_list: map
+                .remove("Cpus_allowed_list")
+                .and_then(|x| Status::parse_allowed_list(&x).ok()),
+            mems_allowed: map
+                .remove("Mems_allowed")
+                .map(|x| Status::parse_allowed(&x))
+                .transpose()?,
+            mems_allowed_list: map
+                .remove("Mems_allowed_list")
+                .and_then(|x| Status::parse_allowed_list(&x).ok()),
+            voluntary_ctxt_switches: map
+                .remove("voluntary_ctxt_switches")
+                .map(|x| Ok(from_str!(u64, &x)))
+                .transpose()?,
+            nonvoluntary_ctxt_switches: map
+                .remove("nonvoluntary_ctxt_switches")
+                .map(|x| Ok(from_str!(u64, &x)))
+                .transpose()?,
+            core_dumping: map.remove("CoreDumping").map(|x| x == "1"),
+            thp_enabled: map.remove("THP_enabled").map(|x| x == "1"),
+        };
+
+        if cfg!(test) && !map.is_empty() {
+            // This isn't an error because different kernels may put different data here, and distros
+            // may backport these changes into older kernels.  Too hard to keep track of
+            eprintln!("Warning: status map is not empty: {:#?}", map);
+        }
+
+        Ok(status)
+    }
+}
+
+impl Status {
+    fn parse_with_kb<T: FromStrRadix>(s: Option<String>) -> ProcResult<Option<T>> {
+        if let Some(s) = s {
+            Ok(Some(from_str!(T, &s.replace(" kB", ""))))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn parse_uid_gid(s: &str, i: usize) -> ProcResult<u32> {
+        Ok(from_str!(u32, expect!(s.split_whitespace().nth(i))))
+    }
+
+    fn parse_sigq(s: &str) -> ProcResult<(u64, u64)> {
+        let mut iter = s.split('/');
+        let first = from_str!(u64, expect!(iter.next()));
+        let second = from_str!(u64, expect!(iter.next()));
+        Ok((first, second))
+    }
+
+    fn parse_list<T: FromStrRadix>(s: &str) -> ProcResult<Vec<T>> {
+        let mut ret = Vec::new();
+        for i in s.split_whitespace() {
+            ret.push(from_str!(T, i));
+        }
+        Ok(ret)
+    }
+
+    fn parse_allowed(s: &str) -> ProcResult<Vec<u32>> {
+        let mut ret = Vec::new();
+        for i in s.split(',') {
+            ret.push(from_str!(u32, i, 16));
+        }
+        Ok(ret)
+    }
+
+    fn parse_allowed_list(s: &str) -> ProcResult<Vec<(u32, u32)>> {
+        let mut ret = Vec::new();
+        for s in s.split(',') {
+            if s.contains('-') {
+                let mut s = s.split('-');
+                let beg = from_str!(u32, expect!(s.next()));
+                if let Some(x) = s.next() {
+                    let end = from_str!(u32, x);
+                    ret.push((beg, end));
+                }
+            } else {
+                let beg = from_str!(u32, s);
+                let end = from_str!(u32, s);
+                ret.push((beg, end));
+            }
+        }
+        Ok(ret)
+    }
+}
