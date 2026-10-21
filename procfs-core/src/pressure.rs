@@ -57,3 +57,123 @@ impl super::FromBufRead for CpuPressure {
 }
 
 /// Memory pressure information
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct MemoryPressure {
+    /// This record indicates the share of time in which at least some tasks are stalled.
+    pub some: PressureRecord,
+    /// This record indicates this share of time in which all non-idle tasks are stalled
+    /// simultaneously.
+    pub full: PressureRecord,
+}
+
+impl super::FromBufRead for MemoryPressure {
+    fn from_buf_read<R: std::io::BufRead>(r: R) -> ProcResult<Self> {
+        let (some, full) = get_pressure(r)?;
+        Ok(MemoryPressure { some, full })
+    }
+}
+
+/// IO pressure information
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+pub struct IoPressure {
+    /// This record indicates the share of time in which at least some tasks are stalled.
+    pub some: PressureRecord,
+    /// This record indicates this share of time in which all non-idle tasks are stalled
+    /// simultaneously.
+    pub full: PressureRecord,
+}
+
+impl super::FromBufRead for IoPressure {
+    fn from_buf_read<R: std::io::BufRead>(r: R) -> ProcResult<Self> {
+        let (some, full) = get_pressure(r)?;
+        Ok(IoPressure { some, full })
+    }
+}
+
+fn get_f32(map: &HashMap<&str, &str>, value: &str) -> ProcResult<f32> {
+    map.get(value).map_or_else(
+        || Err(ProcError::Incomplete(None)),
+        |v| v.parse::<f32>().map_err(|_| ProcError::Incomplete(None)),
+    )
+}
+
+fn get_total(map: &HashMap<&str, &str>) -> ProcResult<u64> {
+    map.get("total").map_or_else(
+        || Err(ProcError::Incomplete(None)),
+        |v| v.parse::<u64>().map_err(|_| ProcError::Incomplete(None)),
+    )
+}
+
+/// Parse a single `some`/`full` pressure record in the following format:
+///
+/// ```text
+/// full avg10=2.10 avg60=0.12 avg300=0.00 total=391926
+/// ```
+///
+/// See also [`get_pressure`].
+pub fn parse_pressure_record(line: &str) -> ProcResult<PressureRecord> {
+    let mut parsed = HashMap::new();
+
+    if !line.starts_with("some") && !line.starts_with("full") {
+        return Err(ProcError::Incomplete(None));
+    }
+
+    let values = &line[5..];
+
+    for kv_str in values.split_whitespace() {
+        let kv_split = kv_str.split('=');
+        let vec: Vec<&str> = kv_split.collect();
+        if vec.len() == 2 {
+            parsed.insert(vec[0], vec[1]);
+        }
+    }
+
+    Ok(PressureRecord {
+        avg10: get_f32(&parsed, "avg10")?,
+        avg60: get_f32(&parsed, "avg60")?,
+        avg300: get_f32(&parsed, "avg300")?,
+        total: get_total(&parsed)?,
+    })
+}
+
+/// Get the pressure records from a reader. The first line should be a `some` record, and the second line a `full` record.
+/// The records are returned in the same order.
+///
+/// ```text
+/// some avg10=4.50 avg60=0.91 avg300=0.00 total=681245
+/// full avg10=2.10 avg60=0.12 avg300=0.00 total=391926
+/// ```
+///
+/// See also [`parse_pressure_record`].
+pub fn get_pressure<R: std::io::BufRead>(mut r: R) -> ProcResult<(PressureRecord, PressureRecord)> {
+    let mut some = String::new();
+    r.read_line(&mut some)?;
+    let mut full = String::new();
+    r.read_line(&mut full)?;
+    Ok((parse_pressure_record(&some)?, parse_pressure_record(&full)?))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::f32::EPSILON;
+
+    #[test]
+    fn test_parse_pressure_record() {
+        let record = parse_pressure_record("full avg10=2.10 avg60=0.12 avg300=0.00 total=391926").unwrap();
+
+        assert!(record.avg10 - 2.10 < EPSILON);
+        assert!(record.avg60 - 0.12 < EPSILON);
+        assert!(record.avg300 - 0.00 < EPSILON);
+        assert_eq!(record.total, 391_926);
+    }
+
+    #[test]
+    fn test_parse_pressure_record_errs() {
+        assert!(parse_pressure_record("avg10=2.10 avg60=0.12 avg300=0.00 total=391926").is_err());
+        assert!(parse_pressure_record("some avg10=2.10 avg300=0.00 total=391926").is_err());
+        assert!(parse_pressure_record("some avg10=2.10 avg60=0.00 avg300=0.00").is_err());
+    }
+}
