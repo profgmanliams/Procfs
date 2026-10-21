@@ -93,3 +93,193 @@ impl Task {
     pub fn children(&self) -> ProcResult<Vec<u32>> {
         let mut buf = String::new();
         let mut file = FileWrapper::open_at(&self.root, &self.fd, "children")?;
+        file.read_to_string(&mut buf)?;
+        buf.split_whitespace()
+            .map(|child| {
+                child
+                    .parse()
+                    .map_err(|_| ProcError::Other("Failed to parse task's child PIDs".to_string()))
+            })
+            .collect()
+    }
+
+    /// Deliberately generate an IO error
+    #[cfg(test)]
+    pub(crate) fn generate_error(&self) -> ProcResult<()> {
+        let _ = FileWrapper::open_at(&self.root, &self.fd, "does_not_exist")?;
+        Ok(())
+    }
+
+    /// Parse a file relative to the task proc structure.
+    pub fn read<P, T>(&self, path: P) -> ProcResult<T>
+    where
+        P: AsRef<Path>,
+        T: FromRead,
+    {
+        FromRead::from_read(FileWrapper::open_at(&self.root, &self.fd, path)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::process::{Io, Syscall};
+    use crate::ProcError;
+    use rustix;
+    use std::process;
+    use std::sync::{Arc, Barrier};
+
+    #[test]
+    #[cfg(not(tarpaulin))] // this test is unstable under tarpaulin, and i'm yet sure why
+                           // When this test runs in CI, run it single-threaded
+    fn test_task_runsinglethread() {
+        use std::io::Read;
+
+        let me = crate::process::Process::myself().unwrap();
+
+        let (work_barrier, w_a, w_b) = {
+            let b = Arc::new(Barrier::new(3));
+            (b.clone(), b.clone(), b)
+        };
+        let (done_barrier, d_a, d_b) = {
+            let b = Arc::new(Barrier::new(3));
+            (b.clone(), b.clone(), b)
+        };
+
+        let bytes_to_read = 2_000_000;
+
+        // create a new task to do some work
+        let join_a = std::thread::Builder::new()
+            .name("one".to_owned())
+            .spawn(move || {
+                let mut vec = Vec::new();
+                let zero = std::fs::File::open("/dev/zero").unwrap();
+
+                zero.take(bytes_to_read).read_to_end(&mut vec).unwrap();
+                assert_eq!(vec.len(), bytes_to_read as usize);
+
+                // spin for about 52 ticks (utime accounting isn't perfectly accurate)
+                let dur = std::time::Duration::from_millis(52 * (1000 / crate::ticks_per_second()) as u64);
+                let start = std::time::Instant::now();
+                while start.elapsed() <= dur {
+                    // spin
+                }
+
+                w_a.wait();
+                d_a.wait()
+            })
+            .unwrap();
+
+        // create a new task that does nothing
+        let join_b = std::thread::Builder::new()
+            .name("two".to_owned())
+            .spawn(move || {
+                w_b.wait();
+                d_b.wait();
+            })
+            .unwrap();
+
+        work_barrier.wait();
+
+        let mut found_one = false;
+        let mut found_two = false;
+        let mut summed_io = Io {
+            rchar: 0,
+            wchar: 0,
+            syscr: 0,
+            syscw: 0,
+            read_bytes: 0,
+            write_bytes: 0,
+            cancelled_write_bytes: 0,
+        };
+        for task in me.tasks().unwrap() {
+            let task = task.unwrap();
+            let stat = task.stat().unwrap();
+            let status = task.status().unwrap();
+            let io = task.io().unwrap();
+            let syscall = task.syscall().unwrap();
+
+            summed_io.rchar += io.rchar;
+            summed_io.wchar += io.wchar;
+            summed_io.syscr += io.syscr;
+            summed_io.syscw += io.syscw;
+            summed_io.read_bytes += io.read_bytes;
+            summed_io.write_bytes += io.write_bytes;
+            summed_io.cancelled_write_bytes += io.cancelled_write_bytes;
+
+            if stat.comm == "one" && status.name == "one" {
+                found_one = true;
+                assert!(io.rchar >= bytes_to_read);
+                assert!(stat.utime >= 50, "utime({}) too small", stat.utime);
+                assert!(matches!(syscall, Syscall::Blocked { .. }), "{:?}", syscall);
+            }
+            if stat.comm == "two" && status.name == "two" {
+                found_two = true;
+                // The process might read miscellaneous things from procfs or
+                // things like /sys/devices/system/cpu/online; allow some small
+                // reads.
+                assert!(io.rchar < bytes_to_read);
+                assert_eq!(io.wchar, 0);
+                assert_eq!(stat.utime, 0);
+                assert!(matches!(syscall, Syscall::Blocked { .. }), "{:?}", syscall);
+            }
+        }
+
+        let proc_io = me.io().unwrap();
+        // these should be mostly the same (though creating the IO struct in the above line will cause some IO to occur)
+        println!("{:?}", summed_io);
+        println!("{:?}", proc_io);
+
+        // signal the threads to exit
+        done_barrier.wait();
+        join_a.join().unwrap();
+        join_b.join().unwrap();
+
+        assert!(found_one);
+        assert!(found_two);
+    }
+
+    #[test]
+    fn test_task_children() {
+        // Use tail -f /dev/null to create two infinite processes
+        let mut command = process::Command::new("tail");
+        command.arg("-f").arg("/dev/null");
+        let (mut child1, mut child2) = (command.spawn().unwrap(), command.spawn().unwrap());
+
+        let tid = rustix::thread::gettid();
+
+        let children = crate::process::Process::myself()
+            .unwrap()
+            .task_from_tid(tid.as_raw_nonzero().get() as i32)
+            .unwrap()
+            .children()
+            .unwrap();
+
+        assert!(children.contains(&child1.id()));
+        assert!(children.contains(&child2.id()));
+
+        child1.kill().unwrap();
+        child2.kill().unwrap();
+    }
+
+    #[test]
+    fn test_error_msg() {
+        let myself = crate::process::Process::myself().unwrap();
+        // let mytask = myself.task_main_thread().unwrap();
+        for task in myself.tasks().unwrap() {
+            let task = task.unwrap();
+            let err = task.generate_error().unwrap_err();
+            // make sure the contained path in the error is correct
+            if let ProcError::NotFound(Some(p)) = err {
+                assert!(
+                    p.display()
+                        .to_string()
+                        .ends_with(&format!("/task/{}/does_not_exist", task.tid)),
+                    "NotFound path({:?}) doesn't look right",
+                    p
+                );
+            } else {
+                panic!("Unexpected error from task.generate_error()");
+            }
+        }
+    }
+}
