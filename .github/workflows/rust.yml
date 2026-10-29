@@ -63,3 +63,7 @@ jobs:
       - name: cargo check (i686)
         run: cargo +${{ matrix.toolchain }} check --workspace --target i686-unknown-linux-gnu --all-features
 
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
