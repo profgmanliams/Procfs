@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
 
     - name: Install toolchains
       uses: actions-rs/toolchain@v1
@@ -45,7 +45,7 @@ jobs:
         toolchain: ["stable", "beta", "nightly"]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
       - name: Install toolchains (aarch64)
         uses: actions-rs/toolchain@v1
